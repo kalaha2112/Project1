@@ -1,6 +1,15 @@
 import { View, Text, Image, StyleSheet } from 'react-native';
 
-export default function ParisCard() {
+interface CardProps {
+  customName?: string;
+  customCountry?: string;
+  titleFont?: string;
+}
+
+export default function ParisCard({
+  customName,
+  titleFont = 'PlayfairDisplay-Black',
+}: CardProps) {
   return (
     <View style={styles.card}>
       <Image
@@ -8,7 +17,9 @@ export default function ParisCard() {
         style={styles.eiffel}
         resizeMode="contain"
       />
-      <Text style={styles.name}>PARIS</Text>
+      <Text style={[styles.name, { fontFamily: titleFont }]}>
+        {customName ?? 'PARIS'}
+      </Text>
     </View>
   );
 }
@@ -23,7 +34,6 @@ const styles = StyleSheet.create({
   },
   name: {
     position: 'absolute', bottom: 4, left: 22, zIndex: 3,
-    fontFamily: 'PlayfairDisplay-Black',
     fontSize: 78, lineHeight: 78,
     letterSpacing: -2,
     color: '#1a1a1a',

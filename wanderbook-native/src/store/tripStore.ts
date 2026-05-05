@@ -8,6 +8,9 @@ export interface Trip {
   country: string;
   status: 'past' | 'now' | 'upcoming';
   cardDesign: 0 | 1 | 2 | 3 | 4;
+  titleFont: string;
+  customName?: string;
+  customCountry?: string;
 }
 
 interface AppState {
@@ -22,14 +25,15 @@ interface AppState {
   setAnimating: (v: boolean) => void;
   setPageState: (i: number, state: PageState) => void;
   setAllPageStates: (states: PageState[]) => void;
+  updateTrip: (id: string, patch: Partial<Pick<Trip, 'customName' | 'customCountry' | 'titleFont'>>) => void;
 }
 
 const TRIPS: Trip[] = [
-  { id: 'paris',   name: 'Paris',   country: 'France',    status: 'past',     cardDesign: 0 },
-  { id: 'kyoto',   name: 'Kyoto',   country: 'Japan',     status: 'now',      cardDesign: 1 },
-  { id: 'bali',    name: 'Bali',    country: 'Indonesia', status: 'upcoming', cardDesign: 2 },
-  { id: 'morocco', name: 'Morocco', country: 'Morocco',   status: 'upcoming', cardDesign: 3 },
-  { id: 'lisbon',  name: 'Lisbon',  country: 'Portugal',  status: 'upcoming', cardDesign: 4 },
+  { id: 'paris',   name: 'Paris',   country: 'France',    status: 'past',     cardDesign: 0, titleFont: 'PlayfairDisplay-Black' },
+  { id: 'kyoto',   name: 'Kyoto',   country: 'Japan',     status: 'now',      cardDesign: 1, titleFont: 'PlayfairDisplay-Black' },
+  { id: 'bali',    name: 'Bali',    country: 'Indonesia', status: 'upcoming', cardDesign: 2, titleFont: 'BebasNeue' },
+  { id: 'morocco', name: 'Morocco', country: 'Morocco',   status: 'upcoming', cardDesign: 3, titleFont: 'BebasNeue' },
+  { id: 'lisbon',  name: 'Lisbon',  country: 'Portugal',  status: 'upcoming', cardDesign: 4, titleFont: 'BebasNeue' },
 ];
 
 export const useTripStore = create<AppState>((set) => ({
@@ -51,4 +55,9 @@ export const useTripStore = create<AppState>((set) => ({
     }),
 
   setAllPageStates: (states) => set({ pageStates: states }),
+
+  updateTrip: (id, patch) =>
+    set((s) => ({
+      trips: s.trips.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    })),
 }));

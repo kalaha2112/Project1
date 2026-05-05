@@ -1,19 +1,24 @@
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function KyotoCard() {
+interface CardProps {
+  customName?: string;
+  customCountry?: string;
+  titleFont?: string;
+}
+
+export default function KyotoCard({
+  customName,
+  customCountry,
+  titleFont = 'PlayfairDisplay-Black',
+}: CardProps) {
   return (
     <View style={styles.card}>
-      {/* Ghost watermark */}
       <Text style={styles.ghost}>{'KY\nOTO'}</Text>
-
-      {/* Accent dot */}
       <View style={styles.dot} />
-
-      {/* Kyoto */}
-      <Text style={styles.name}>Kyoto</Text>
-
-      {/* Japan */}
-      <Text style={styles.country}>Japan</Text>
+      <Text style={[styles.name, { fontFamily: titleFont }]}>
+        {customName ?? 'Kyoto'}
+      </Text>
+      <Text style={styles.country}>{customCountry ?? 'Japan'}</Text>
     </View>
   );
 }
@@ -34,7 +39,6 @@ const styles = StyleSheet.create({
   },
   name: {
     position: 'absolute', top: 22, left: 24, zIndex: 4,
-    fontFamily: 'PlayfairDisplay-Black',
     fontSize: 54, lineHeight: 48,
     letterSpacing: -1.5,
     color: '#1a1a1a',

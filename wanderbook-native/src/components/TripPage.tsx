@@ -1,5 +1,5 @@
 import { Animated, View, Text, StyleSheet } from 'react-native';
-import { PageState } from '../store/tripStore';
+import { PageState, Trip } from '../store/tripStore';
 import ParisCard   from './cards/ParisCard';
 import KyotoCard   from './cards/KyotoCard';
 import BaliCard    from './cards/BaliCard';
@@ -18,21 +18,20 @@ const Z: Record<PageState, number> = {
 
 interface Props {
   index: number;
-  cardDesign: 0 | 1 | 2 | 3 | 4;
+  trip: Trip;
   pageState: PageState;
-  rotateAnim: Animated.Value;  // degrees
+  rotateAnim: Animated.Value;
 }
 
-export default function TripPage({ index, cardDesign, pageState, rotateAnim }: Props) {
-  const Card = CARDS[cardDesign];
+export default function TripPage({ index, trip, pageState, rotateAnim }: Props) {
+  const Card = CARDS[trip.cardDesign];
 
   const rotateX = rotateAnim.interpolate({
     inputRange:  [-180, 0, 88],
     outputRange: ['-180deg', '0deg', '88deg'],
   });
 
-  // Simulate transform-origin: top center by translating pivot to top edge
-  const HALF_H = 94; // 188 / 2
+  const HALF_H = 94;
 
   return (
     <Animated.View
@@ -49,14 +48,15 @@ export default function TripPage({ index, cardDesign, pageState, rotateAnim }: P
         },
       ]}
     >
-      {/* White card inner */}
       <View style={styles.inner}>
-        {/* Top edge highlight */}
         <View style={styles.topEdge} />
 
-        <Card />
+        <Card
+          customName={trip.customName}
+          customCountry={trip.customCountry}
+          titleFont={trip.titleFont}
+        />
 
-        {/* Page number */}
         <Text style={styles.pageNum}>{String(index + 1).padStart(2, '0')}</Text>
       </View>
     </Animated.View>

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
   PanResponder, StyleSheet, SafeAreaView, StatusBar,
@@ -22,6 +22,7 @@ import BookCover   from './src/components/BookCover';
 import BookOutline from './src/components/BookOutline';
 import TripPage    from './src/components/TripPage';
 import PageDots    from './src/components/PageDots';
+import EditSheet   from './src/components/EditSheet';
 
 const SWIPE_THRESHOLD = 38;
 
@@ -32,6 +33,7 @@ function WanderbookApp() {
     openBook, closeBook, goNext, goPrev, jumpTo,
   } = usePageFlip();
   const { trips } = useTripStore();
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
 
   // Footer fades in when book opens
   const footerOpacity = useRef(new Animated.Value(0)).current;
@@ -65,7 +67,6 @@ function WanderbookApp() {
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" />
 
-      {/* "your travel journal" label fades out as cover opens */}
       <Animated.Text
         style={[
           styles.coverLabel,
@@ -83,7 +84,7 @@ function WanderbookApp() {
           <TripPage
             key={trip.id}
             index={i}
-            cardDesign={trip.cardDesign}
+            trip={trip}
             pageState={pageStates[i]}
             rotateAnim={pageAnims[i]}
           />
@@ -105,10 +106,25 @@ function WanderbookApp() {
           <View style={styles.tick} />
         </View>
 
-        <TouchableOpacity onPress={closeBook} hitSlop={12}>
-          <Text style={styles.closeBtn}>close book</Text>
-        </TouchableOpacity>
+        <View style={styles.footerActions}>
+          <TouchableOpacity onPress={() => setEditingIdx(activeIdx)} hitSlop={12}>
+            <Text style={styles.editBtn}>edit card</Text>
+          </TouchableOpacity>
+
+          <View style={styles.footerDivider} />
+
+          <TouchableOpacity onPress={closeBook} hitSlop={12}>
+            <Text style={styles.closeBtn}>close book</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
+
+      {/* Edit sheet */}
+      <EditSheet
+        trip={editingIdx !== null ? trips[editingIdx] : null}
+        visible={editingIdx !== null}
+        onClose={() => setEditingIdx(null)}
+      />
     </View>
   );
 }
@@ -153,6 +169,20 @@ const styles = StyleSheet.create({
   swipeLabel: {
     fontSize: 8, letterSpacing: 2.5,
     color: '#ccc', textTransform: 'uppercase',
+    fontFamily: 'DMSans-Regular',
+  },
+  footerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  footerDivider: {
+    width: 1, height: 10,
+    backgroundColor: '#e0e0e0',
+  },
+  editBtn: {
+    fontSize: 9, letterSpacing: 1.5,
+    color: '#91040C', textTransform: 'uppercase',
     fontFamily: 'DMSans-Regular',
   },
   closeBtn: {

@@ -1,28 +1,38 @@
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
-export default function MoroccoCard() {
+interface CardProps {
+  customName?: string;
+  customCountry?: string;
+  titleFont?: string;
+}
+
+export default function MoroccoCard({
+  customName,
+  customCountry,
+  titleFont = 'BebasNeue',
+}: CardProps) {
   return (
     <View style={styles.card}>
-      {/* Ghost M */}
       <Text style={styles.ghostM}>M</Text>
 
-      {/* MO */}
-      <Text style={styles.mo}>MO</Text>
+      {customName ? (
+        <Text style={[styles.customName, { fontFamily: titleFont }]}>
+          {customName}
+        </Text>
+      ) : (
+        <>
+          <Text style={styles.mo}>MO</Text>
+          <Text style={styles.rocco}>rocco</Text>
+        </>
+      )}
 
-      {/* rocco */}
-      <Text style={styles.rocco}>rocco</Text>
-
-      {/* Diagonal ink line */}
       <Svg style={StyleSheet.absoluteFillObject} width={280} height={188} viewBox="0 0 280 188">
         <Line x1="8" y1="120" x2="200" y2="50" stroke="#1a1a1a" strokeWidth={0.8} strokeLinecap="round" opacity={0.18} />
       </Svg>
 
-      {/* Amber circle outline */}
       <View style={styles.circle} />
-
-      {/* Marrakech */}
-      <Text style={styles.sub}>Marrakech</Text>
+      <Text style={styles.sub}>{customCountry ?? 'Marrakech'}</Text>
     </View>
   );
 }
@@ -47,6 +57,12 @@ const styles = StyleSheet.create({
     fontFamily: 'PlayfairDisplay-Italic',
     fontSize: 48, lineHeight: 43,
     letterSpacing: -0.5,
+    color: '#1a1a1a',
+  },
+  customName: {
+    position: 'absolute', top: 22, left: 24, zIndex: 4,
+    fontSize: 54, lineHeight: 50,
+    letterSpacing: -1,
     color: '#1a1a1a',
   },
   circle: {

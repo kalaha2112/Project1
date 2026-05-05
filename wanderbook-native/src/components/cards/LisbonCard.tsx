@@ -1,23 +1,35 @@
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function LisbonCard() {
+interface CardProps {
+  customName?: string;
+  customCountry?: string;
+  titleFont?: string;
+}
+
+export default function LisbonCard({
+  customName,
+  customCountry,
+  titleFont = 'BebasNeue',
+}: CardProps) {
   return (
     <View style={styles.card}>
-      {/* LIS — top right */}
-      <Text style={styles.lis}>LIS</Text>
+      {customName ? (
+        <Text style={[styles.customName, { fontFamily: titleFont }]}>
+          {customName}
+        </Text>
+      ) : (
+        <>
+          <Text style={styles.lis}>LIS</Text>
+          <Text style={styles.bon}>bon</Text>
+        </>
+      )}
 
-      {/* Horizontal rule */}
       <View style={styles.rule} />
 
-      {/* bon — bottom left */}
-      <Text style={styles.bon}>bon</Text>
-
-      {/* Circle bridge straddling the rule */}
       <View style={styles.circle}>
-        <Text style={styles.circleLabel}>{'Por\ntugal'}</Text>
+        <Text style={styles.circleLabel}>{customCountry ?? 'Por\ntugal'}</Text>
       </View>
 
-      {/* Upcoming dot */}
       <View style={styles.dot} />
     </View>
   );
@@ -41,6 +53,12 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 16, left: 24, zIndex: 3,
     fontFamily: 'PlayfairDisplay-BoldItalic',
     fontSize: 72, lineHeight: 72,
+    letterSpacing: -1,
+    color: '#1a1a1a',
+  },
+  customName: {
+    position: 'absolute', top: 16, left: 24, zIndex: 3,
+    fontSize: 68, lineHeight: 65,
     letterSpacing: -1,
     color: '#1a1a1a',
   },

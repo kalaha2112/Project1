@@ -1,14 +1,23 @@
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function BaliCard() {
+interface CardProps {
+  customName?: string;
+  customCountry?: string;
+  titleFont?: string;
+}
+
+export default function BaliCard({
+  customName,
+  customCountry,
+  titleFont = 'BebasNeue',
+}: CardProps) {
   return (
     <View style={styles.card}>
-      {/* BALI — centred vertically */}
-      <Text style={styles.name}>BALI</Text>
-
-      {/* Indonesia — vertical right edge */}
+      <Text style={[styles.name, { fontFamily: titleFont }]}>
+        {customName ?? 'BALI'}
+      </Text>
       <View style={styles.verticalWrap}>
-        <Text style={styles.country}>Indonesia</Text>
+        <Text style={styles.country}>{customCountry ?? 'Indonesia'}</Text>
       </View>
     </View>
   );
@@ -21,11 +30,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   name: {
-    fontFamily: 'BebasNeue',
     fontSize: 100, lineHeight: 100,
     letterSpacing: 4,
     color: '#1a1a1a',
-    marginTop: -8,       // nudge up slightly to match translateY(-54%)
+    marginTop: -8,
   },
   verticalWrap: {
     position: 'absolute', right: 22, top: 0, bottom: 0,
@@ -38,7 +46,7 @@ const styles = StyleSheet.create({
     color: '#91040C',
     textTransform: 'uppercase',
     transform: [{ rotate: '90deg' }],
-    width: 80,          // gives the rotated text room without clipping
+    width: 80,
     textAlign: 'center',
   },
 });
