@@ -48,11 +48,12 @@ function WanderbookApp() {
     }).start();
   }
 
-  // Swipe on the book area — don't claim on start so taps reach child components
+  // Swipe handler — only activates on vertical move, so taps reach child components
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder:  (_, g) => Math.abs(g.dy) > 8,
+      onStartShouldSetPanResponder:        () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder:         (_, g) => Math.abs(g.dy) > 8,
       onPanResponderRelease: (_, g) => {
         if      (g.dy < -SWIPE_THRESHOLD) goNext();
         else if (g.dy >  SWIPE_THRESHOLD) goPrev();
@@ -73,21 +74,32 @@ function WanderbookApp() {
         your travel journal
       </Animated.Text>
 
-      {/* Book */}
-      <View style={styles.bookWrap} {...panResponder.panHandlers}>
+      {/*
+        bookContainer is 284×192 — 2px larger on each side than the book.
+        bookWrap sits inside at top:2, left:2.
+        BookOutline (284×192) sits at 0,0 on top of everything, pointer-events:none.
+      */}
+      <View style={styles.bookContainer}>
+        {/* Pages + cover inside the tight 280×188 box */}
+        <View style={styles.bookWrap} {...panResponder.panHandlers}>
+          {trips.map((trip, i) => (
+            <TripPage
+              key={trip.id}
+              index={i}
+              trip={trip}
+              pageState={pageStates[i]}
+              rotateAnim={pageAnims[i]}
+            />
+          ))}
+
+          {/* Disable cover touch when book is open so swipes aren't blocked */}
+          <View pointerEvents={isOpen ? 'none' : 'auto'}>
+            <BookCover coverAnim={coverAnim} onOpen={openBook} />
+          </View>
+        </View>
+
+        {/* Outline rendered last = on top, pointer-events:none */}
         <BookOutline />
-
-        {trips.map((trip, i) => (
-          <TripPage
-            key={trip.id}
-            index={i}
-            trip={trip}
-            pageState={pageStates[i]}
-            rotateAnim={pageAnims[i]}
-          />
-        ))}
-
-        <BookCover coverAnim={coverAnim} onOpen={openBook} />
       </View>
 
       {/* Footer */}
@@ -107,16 +119,13 @@ function WanderbookApp() {
           <TouchableOpacity onPress={() => setEditingIdx(activeIdx)} hitSlop={12}>
             <Text style={styles.editBtn}>edit card</Text>
           </TouchableOpacity>
-
           <View style={styles.footerDivider} />
-
           <TouchableOpacity onPress={closeBook} hitSlop={12}>
             <Text style={styles.closeBtn}>close book</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Edit sheet */}
       <EditSheet
         trip={editingIdx !== null ? trips[editingIdx] : null}
         visible={editingIdx !== null}
@@ -159,7 +168,13 @@ const styles = StyleSheet.create({
     color: '#ccc', textTransform: 'uppercase',
     fontFamily: 'DMSans-Regular',
   },
-  bookWrap: { width: 280, height: 188 },
+  // 2px padding around the book so the outline isn't clipped
+  bookContainer: { width: 284, height: 192 },
+  // Actual book content sits 2px inset
+  bookWrap: {
+    position: 'absolute', top: 2, left: 2,
+    width: 280, height: 188,
+  },
   footer:   { marginTop: 28, alignItems: 'center', gap: 14 },
   swipeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tick:     { width: 18, height: 1, backgroundColor: '#ddd' },
@@ -168,15 +183,8 @@ const styles = StyleSheet.create({
     color: '#ccc', textTransform: 'uppercase',
     fontFamily: 'DMSans-Regular',
   },
-  footerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  footerDivider: {
-    width: 1, height: 10,
-    backgroundColor: '#e0e0e0',
-  },
+  footerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  footerDivider: { width: 1, height: 10, backgroundColor: '#e0e0e0' },
   editBtn: {
     fontSize: 9, letterSpacing: 1.5,
     color: '#91040C', textTransform: 'uppercase',
