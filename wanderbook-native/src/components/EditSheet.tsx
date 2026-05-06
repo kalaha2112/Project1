@@ -30,7 +30,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = 'text' | 'stickers';
+type Tab = 'text' | 'trip' | 'stickers';
 
 export default function EditSheet({ trip, visible, onClose }: Props) {
   const { updateTrip, addElement, removeElement } = useTripStore();
@@ -38,14 +38,27 @@ export default function EditSheet({ trip, visible, onClose }: Props) {
   const [name, setName]       = useState('');
   const [country, setCountry] = useState('');
   const [font, setFont]       = useState('PlayfairDisplay-Black');
+  // Trip details tab
+  const [dateRange, setDateRange]         = useState('');
+  const [daysAway, setDaysAway]           = useState('');
+  const [budgetTotal, setBudgetTotal]     = useState('');
+  const [budgetSpent, setBudgetSpent]     = useState('');
+  const [hotelLocation, setHotelLocation] = useState('');
+  const [hotelNights, setHotelNights]     = useState('');
 
   useEffect(() => {
     if (trip) {
       setName(trip.customName ?? trip.name);
       setCountry(trip.customCountry ?? trip.country);
       setFont(trip.titleFont);
+      setDateRange(trip.dateRange     ?? '');
+      setDaysAway(trip.daysAway       ?? '');
+      setBudgetTotal(trip.budgetTotal != null ? String(trip.budgetTotal) : '');
+      setBudgetSpent(trip.budgetSpent != null ? String(trip.budgetSpent) : '');
+      setHotelLocation(trip.hotelLocation ?? '');
+      setHotelNights(trip.hotelNights != null ? String(trip.hotelNights) : '');
     }
-  }, [trip]);
+  }, [trip?.id]);
 
   function handleSave() {
     if (!trip) return;
@@ -53,6 +66,19 @@ export default function EditSheet({ trip, visible, onClose }: Props) {
       customName:    name.trim()    || undefined,
       customCountry: country.trim() || undefined,
       titleFont:     font,
+    });
+    onClose();
+  }
+
+  function handleSaveTrip() {
+    if (!trip) return;
+    updateTrip(trip.id, {
+      dateRange:     dateRange.trim()     || undefined,
+      daysAway:      daysAway.trim()      || undefined,
+      budgetTotal:   budgetTotal          ? Number(budgetTotal)          : undefined,
+      budgetSpent:   budgetSpent          ? Number(budgetSpent)          : undefined,
+      hotelLocation: hotelLocation.trim() || undefined,
+      hotelNights:   hotelNights          ? parseInt(hotelNights, 10)    : undefined,
     });
     onClose();
   }
@@ -155,6 +181,12 @@ export default function EditSheet({ trip, visible, onClose }: Props) {
               <Text style={[styles.tabBtnText, tab === 'text' && styles.tabBtnTextActive]}>TEXT</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              style={[styles.tabBtn, tab === 'trip' && styles.tabBtnActive]}
+              onPress={() => setTab('trip')}
+            >
+              <Text style={[styles.tabBtnText, tab === 'trip' && styles.tabBtnTextActive]}>TRIP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.tabBtn, tab === 'stickers' && styles.tabBtnActive]}
               onPress={() => setTab('stickers')}
             >
@@ -249,6 +281,81 @@ export default function EditSheet({ trip, visible, onClose }: Props) {
                     </TouchableOpacity>
                   </View>
                 ))}
+              </View>
+            </ScrollView>
+          )}
+
+          {/* ── TRIP TAB ── */}
+          {tab === 'trip' && (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.label}>DATE RANGE</Text>
+              <TextInput
+                style={styles.input}
+                value={dateRange}
+                onChangeText={setDateRange}
+                placeholder="e.g. May 15 – 22, 2026"
+                placeholderTextColor="#ccc"
+                returnKeyType="next"
+              />
+
+              <Text style={styles.label}>DAYS AWAY</Text>
+              <TextInput
+                style={styles.input}
+                value={daysAway}
+                onChangeText={setDaysAway}
+                placeholder="e.g. 13 days away"
+                placeholderTextColor="#ccc"
+                returnKeyType="next"
+              />
+
+              <Text style={styles.label}>BUDGET TOTAL ($)</Text>
+              <TextInput
+                style={styles.input}
+                value={budgetTotal}
+                onChangeText={setBudgetTotal}
+                placeholder="e.g. 3000"
+                placeholderTextColor="#ccc"
+                keyboardType="numeric"
+                returnKeyType="next"
+              />
+
+              <Text style={styles.label}>BUDGET SPENT ($)</Text>
+              <TextInput
+                style={styles.input}
+                value={budgetSpent}
+                onChangeText={setBudgetSpent}
+                placeholder="e.g. 1420"
+                placeholderTextColor="#ccc"
+                keyboardType="numeric"
+                returnKeyType="next"
+              />
+
+              <Text style={styles.label}>HOTEL LOCATION</Text>
+              <TextInput
+                style={styles.input}
+                value={hotelLocation}
+                onChangeText={setHotelLocation}
+                placeholder="e.g. Ubud"
+                placeholderTextColor="#ccc"
+                returnKeyType="next"
+              />
+
+              <Text style={styles.label}>HOTEL NIGHTS</Text>
+              <TextInput
+                style={styles.input}
+                value={hotelNights}
+                onChangeText={setHotelNights}
+                placeholder="e.g. 7"
+                placeholderTextColor="#ccc"
+                keyboardType="numeric"
+                returnKeyType="done"
+              />
+
+              <View style={styles.actions}>
+                <View />
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTrip}>
+                  <Text style={styles.saveBtnText}>SAVE</Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
           )}

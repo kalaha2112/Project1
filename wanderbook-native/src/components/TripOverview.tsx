@@ -1,25 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar,
-  ScrollView, TextInput,
+  ScrollView, Image,
 } from 'react-native';
-import { Trip, useTripStore } from '../store/tripStore';
-import BookOutline from './BookOutline';
-import StickerLayer from './StickerLayer';
+import { Trip } from '../store/tripStore';
 import EditSheet from './EditSheet';
-import ParisCard   from './cards/ParisCard';
-import KyotoCard   from './cards/KyotoCard';
-import BaliCard    from './cards/BaliCard';
-import MoroccoCard from './cards/MoroccoCard';
-import LisbonCard  from './cards/LisbonCard';
-
-const CARDS = [ParisCard, KyotoCard, BaliCard, MoroccoCard, LisbonCard];
-
-const STATUS_CONFIG = {
-  past:     { bg: '#e8e8e8',              text: '#888',    label: 'PAST' },
-  now:      { bg: 'rgba(145,4,12,0.1)',   text: '#91040C', label: 'NOW' },
-  upcoming: { bg: 'rgba(0,0,0,0.05)',     text: '#555',    label: 'UPCOMING' },
-};
 
 interface Props {
   trip: Trip | null;
@@ -29,21 +14,21 @@ interface Props {
 }
 
 export default function TripOverview({ trip, index, visible, onClose }: Props) {
-  const [showEdit, setShowEdit] = useState(false);
-  const [notes, setNotes]       = useState('');
-  const updateTrip = useTripStore((s) => s.updateTrip);
-
-  useEffect(() => {
-    setNotes(trip?.notes ?? '');
-  }, [trip?.id]);
+  const [showEdit, setShowEdit]   = useState(false);
+  const [activeDay, setActiveDay] = useState(0);
 
   if (!trip) return null;
 
-  const Card        = CARDS[trip.cardDesign];
-  const pageNum     = String((index ?? 0) + 1).padStart(2, '0');
   const displayName = trip.customName    ?? trip.name;
   const displayCtry = trip.customCountry ?? trip.country;
-  const statusCfg   = STATUS_CONFIG[trip.status];
+  const imageEls    = trip.elements.filter((e) => e.type === 'image');
+  const numDays     = trip.itinerary?.length ?? 3;
+  const spentPct    = trip.budgetTotal && trip.budgetTotal > 0
+    ? Math.min((trip.budgetSpent ?? 0) / trip.budgetTotal, 1)
+    : 0;
+  const budgetLeft  = trip.budgetTotal != null
+    ? trip.budgetTotal - (trip.budgetSpent ?? 0)
+    : null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -57,72 +42,151 @@ export default function TripOverview({ trip, index, visible, onClose }: Props) {
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.hero}>
-            <Text style={styles.heroCountry}>{displayCtry.toUpperCase()}</Text>
-            <Text style={[styles.heroCity, { fontFamily: trip.titleFont }]}>
-              {displayName}
-            </Text>
-            <View style={[styles.badge, { backgroundColor: statusCfg.bg }]}>
-              <Text style={[styles.badgeText, { color: statusCfg.text }]}>
-                {statusCfg.label}
+          {/* ── Hero ── */}
+          <View style={styles.card}>
+            <View style={styles.heroRow}>
+              <View style={styles.heroLeft}>
+                <Text style={styles.mLabel}>{displayCtry.toUpperCase()}</Text>
+                <Text style={[styles.heroCity, { fontFamily: trip.titleFont }]}>
+                  {displayName}
+                </Text>
+                {trip.dateRange ? (
+                  <Text style={styles.heroDate}>{trip.dateRange}</Text>
+                ) : null}
+                {trip.daysAway ? (
+                  <View style={styles.daysAwayPill}>
+                    <View style={styles.daysAwayDot} />
+                    <Text style={styles.daysAwayText}>{trip.daysAway}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.polaroidStack}>
+                {imageEls.length > 0 ? (
+                  <>
+                    <View style={[styles.polaroid, styles.polaroidBack]}>
+                      <Image
+                        source={{ uri: imageEls[1]?.uri ?? imageEls[0].uri! }}
+                        style={styles.polaroidImg}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.polaroidCaption} numberOfLines={1}>
+                        {trip.dateRange?.split('–').pop()?.trim() ?? displayName.toLowerCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.polaroid}>
+                      <Image
+                        source={{ uri: imageEls[0].uri! }}
+                        style={styles.polaroidImg}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.polaroidCaption} numberOfLines={1}>
+                        {displayName.toLowerCase()}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={[styles.polaroid, styles.polaroidBack, styles.polaroidEmpty]} />
+                    <View style={[styles.polaroid, styles.polaroidEmpty]} />
+                  </>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* ── Itinerary ── */}
+          <View style={styles.card}>
+            <Text style={styles.mLabel}>DAY BY DAY</Text>
+            <Text style={styles.sectionTitle}>Itinerary</Text>
+            <View style={styles.dayPills}>
+              {Array.from({ length: numDays }, (_, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.dayPill, activeDay === i && styles.dayPillActive]}
+                  onPress={() => setActiveDay(i)}
+                >
+                  <Text style={[styles.dayPillText, activeDay === i && styles.dayPillTextActive]}>
+                    Day {i + 1}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {trip.itinerary?.[activeDay]?.length ? (
+              <View style={styles.itineraryList}>
+                {trip.itinerary[activeDay].map((item, i) => (
+                  <Text key={i} style={styles.itineraryItem}>· {item}</Text>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyHint}>No plans added yet. Tap edit to fill in.</Text>
+            )}
+          </View>
+
+          {/* ── OOTD + Budget ── */}
+          <View style={styles.halfRow}>
+            <View style={[styles.card, styles.halfCard]}>
+              <Text style={styles.mLabel}>TODAY'S LOOK</Text>
+              <Text style={[styles.sectionTitle, styles.ootdTitle]}>OOTD</Text>
+              <View style={styles.ootdIcons}>
+                <Text style={styles.ootdIcon}>👕</Text>
+                <Text style={styles.ootdIcon}>👓</Text>
+                {'\n'}
+                <Text style={styles.ootdIcon}>👜</Text>
+              </View>
+            </View>
+
+            <View style={[styles.card, styles.halfCard]}>
+              <Text style={styles.mLabel}>SPENDING</Text>
+              <Text style={styles.sectionTitle}>Budget</Text>
+              <Text style={styles.budgetAmount}>
+                {trip.budgetSpent != null
+                  ? `$${trip.budgetSpent.toLocaleString()}`
+                  : '—'}
               </Text>
+              {trip.budgetTotal != null && (
+                <Text style={styles.budgetOf}>of ${trip.budgetTotal.toLocaleString()}</Text>
+              )}
+              {trip.budgetTotal != null && trip.budgetTotal > 0 && (
+                <View style={styles.progressBg}>
+                  <View style={[styles.progressFill, { width: `${(spentPct * 100).toFixed(0)}%` }]} />
+                </View>
+              )}
+              {budgetLeft != null && (
+                <Text style={styles.budgetLeft}>${budgetLeft.toLocaleString()} left</Text>
+              )}
             </View>
           </View>
 
-          {/* Card + outline — identical structure to App.tsx bookContainer */}
-          <View style={styles.bookContainer}>
-            <View style={styles.bookWrap}>
-              <View style={styles.topEdge} />
-              <Card
-                customName={trip.customName}
-                customCountry={trip.customCountry}
-                titleFont={trip.titleFont}
-              />
-              <StickerLayer trip={trip} />
-              <Text style={styles.pageNum}>{pageNum}</Text>
+          {/* ── Hotel ── */}
+          {(trip.hotelLocation || trip.hotelNights) ? (
+            <View style={[styles.card, styles.hotelCard]}>
+              <View>
+                <Text style={styles.mLabel}>
+                  {[
+                    trip.hotelLocation?.toUpperCase(),
+                    trip.hotelNights ? `${trip.hotelNights} NIGHTS` : null,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+                <Text style={styles.sectionTitle}>Hotel</Text>
+              </View>
+              <View style={styles.hotelPhoto} />
             </View>
-            <BookOutline />
-          </View>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.editBtn}
-              onPress={() => setShowEdit(true)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.editBtnText}>edit card</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.notesSection}>
-            <Text style={styles.notesLabel}>NOTES</Text>
-            <TextInput
-              style={styles.notesInput}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="add a memory, note, or date…"
-              placeholderTextColor="#ccc"
-              multiline
-              textAlignVertical="top"
-            />
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={() => updateTrip(trip.id, { notes })}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.saveBtnText}>save notes</Text>
-            </TouchableOpacity>
-          </View>
+          ) : null}
         </ScrollView>
+
+        {/* Floating edit button */}
+        <TouchableOpacity
+          style={styles.editFab}
+          onPress={() => setShowEdit(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.editFabText}>edit card</Text>
+        </TouchableOpacity>
       </View>
 
-      <EditSheet
-        trip={trip}
-        visible={showEdit}
-        onClose={() => setShowEdit(false)}
-      />
+      <EditSheet trip={trip} visible={showEdit} onClose={() => setShowEdit(false)} />
     </Modal>
   );
 }
@@ -130,7 +194,7 @@ export default function TripOverview({ trip, index, visible, onClose }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#faf9f7',
+    backgroundColor: '#f7f5f2',
   },
   backBtn: {
     position: 'absolute',
@@ -145,122 +209,244 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
   scroll: {
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 110 : 84,
-    paddingBottom: 48,
+    paddingTop: Platform.OS === 'ios' ? 100 : 72,
+    paddingHorizontal: 16,
+    paddingBottom: 100,
+    gap: 12,
   },
 
-  hero: {
-    alignItems: 'center',
-    marginBottom: 24,
+  // ── Card shell ──
+  card: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#1a1a1a',
+    borderRadius: 8,
+    padding: 20,
   },
-  heroCountry: {
+
+  // ── Shared label ──
+  mLabel: {
     fontFamily: 'DMSans-Medium',
     fontSize: 8,
-    letterSpacing: 3,
-    color: '#bbb',
+    letterSpacing: 2,
+    color: '#c4a472',
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginBottom: 4,
+  },
+
+  // ── Hero ──
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  heroLeft: {
+    flex: 1,
+    paddingRight: 8,
   },
   heroCity: {
-    fontSize: 48,
-    lineHeight: 44,
+    fontSize: 52,
+    lineHeight: 48,
     letterSpacing: -1.5,
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  heroDate: {
+    fontFamily: 'CormorantGaramond-LightItalic',
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 10,
+  },
+  daysAwayPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#91040C',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 6,
+  },
+  daysAwayDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#91040C',
+  },
+  daysAwayText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 11,
+    color: '#91040C',
+    letterSpacing: 0.3,
+  },
+
+  // ── Polaroids ──
+  polaroidStack: {
+    width: 130,
+    height: 150,
+  },
+  polaroid: {
+    position: 'absolute',
+    width: 82,
+    height: 104,
+    backgroundColor: '#111',
+    padding: 5,
+    paddingBottom: 22,
+    left: 5,
+    top: 28,
+    transform: [{ rotate: '-4deg' }],
+    zIndex: 2,
+  },
+  polaroidBack: {
+    left: undefined,
+    right: 0,
+    top: 4,
+    transform: [{ rotate: '9deg' }],
+    zIndex: 1,
+  },
+  polaroidImg: {
+    flex: 1,
+    backgroundColor: '#333',
+  },
+  polaroidCaption: {
+    position: 'absolute',
+    bottom: 4,
+    left: 5,
+    right: 5,
+    textAlign: 'center',
+    fontFamily: 'CormorantGaramond-LightItalic',
+    fontSize: 8,
+    color: '#bbb',
+    letterSpacing: 0.5,
+  },
+  polaroidEmpty: {
+    backgroundColor: '#d8d5d0',
+  },
+
+  // ── Section title ──
+  sectionTitle: {
+    fontFamily: 'PlayfairDisplay-BoldItalic',
+    fontSize: 30,
+    lineHeight: 32,
+    letterSpacing: -0.5,
     color: '#1a1a1a',
     marginBottom: 12,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 2,
-  },
-  badgeText: {
-    fontFamily: 'DMSans-Medium',
-    fontSize: 8,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+  ootdTitle: {
+    fontFamily: 'BebasNeue',
+    letterSpacing: 1,
   },
 
-  // Mirrors App.tsx exactly
-  bookContainer: { width: 344, height: 232 },
-  bookWrap: {
-    position: 'absolute', top: 2, left: 2,
-    width: 340, height: 228,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    borderRadius: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 4,
+  // ── Itinerary ──
+  dayPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  topEdge: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    height: 1, backgroundColor: 'rgba(0,0,0,0.06)', zIndex: 5,
-  },
-  pageNum: {
-    position: 'absolute', top: 8, right: 12, zIndex: 4,
-    fontFamily: 'CormorantGaramond-LightItalic',
-    fontSize: 10, color: '#ccc',
-  },
-
-  footer: {
-    marginTop: 28,
-    alignItems: 'center',
-  },
-  editBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 28,
+  dayPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#1a1a1a',
-    borderRadius: 2,
+    borderColor: '#ccc',
+    borderRadius: 20,
   },
-  editBtnText: {
+  dayPillActive: {
+    borderColor: '#91040C',
+    backgroundColor: 'rgba(145,4,12,0.04)',
+  },
+  dayPillText: {
     fontFamily: 'DMSans-Regular',
-    fontSize: 9,
-    letterSpacing: 2,
-    color: '#1a1a1a',
-    textTransform: 'uppercase',
+    fontSize: 11,
+    color: '#aaa',
   },
-
-  notesSection: {
-    marginTop: 32,
-    width: 344,
-    gap: 10,
-  },
-  notesLabel: {
+  dayPillTextActive: {
+    color: '#91040C',
     fontFamily: 'DMSans-Medium',
-    fontSize: 8,
-    letterSpacing: 3,
-    color: '#bbb',
-    textTransform: 'uppercase',
   },
-  notesInput: {
+  itineraryList: { marginTop: 12, gap: 4 },
+  itineraryItem: {
     fontFamily: 'DMSans-Regular',
     fontSize: 12,
-    color: '#1a1a1a',
+    color: '#444',
     lineHeight: 20,
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
-    borderRadius: 2,
-    padding: 12,
-    minHeight: 88,
-    backgroundColor: '#fff',
   },
-  saveBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: '#1a1a1a',
-    borderRadius: 2,
-  },
-  saveBtnText: {
+  emptyHint: {
     fontFamily: 'DMSans-Regular',
-    fontSize: 9,
-    letterSpacing: 2,
+    fontSize: 11,
+    color: '#ccc',
+    marginTop: 8,
+  },
+
+  // ── Half row ──
+  halfRow: { flexDirection: 'row', gap: 12 },
+  halfCard: { flex: 1, padding: 16 },
+
+  // ── OOTD ──
+  ootdIcons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  ootdIcon: { fontSize: 28 },
+
+  // ── Budget ──
+  budgetAmount: {
+    fontFamily: 'PlayfairDisplay-Bold',
+    fontSize: 28,
+    letterSpacing: -0.5,
     color: '#1a1a1a',
+    marginTop: 2,
+  },
+  budgetOf: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 10,
+    color: '#aaa',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  progressBg: {
+    height: 3,
+    backgroundColor: '#e4e1dc',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressFill: {
+    height: 3,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 2,
+  },
+  budgetLeft: {
+    fontFamily: 'CormorantGaramond-LightItalic',
+    fontSize: 15,
+    color: '#91040C',
+    letterSpacing: 0.2,
+  },
+
+  // ── Hotel ──
+  hotelCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hotelPhoto: {
+    width: 88,
+    height: 88,
+    borderRadius: 4,
+    backgroundColor: '#e4e1dc',
+  },
+
+  // ── FAB ──
+  editFab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 40 : 24,
+    alignSelf: 'center',
+    left: 16,
+    right: 16,
+    paddingVertical: 14,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 4,
+    alignItems: 'center',
+  },
+  editFabText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 10,
+    letterSpacing: 2.5,
+    color: '#fff',
     textTransform: 'uppercase',
   },
 });
