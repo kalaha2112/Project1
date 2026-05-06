@@ -143,6 +143,7 @@ function WanderbookApp() {
 
       <TripOverview
         trip={overviewIdx !== null ? trips[overviewIdx] : null}
+        index={overviewIdx}
         visible={overviewIdx !== null}
         onClose={() => setOverviewIdx(null)}
       />
