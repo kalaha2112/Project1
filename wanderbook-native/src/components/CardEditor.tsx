@@ -79,7 +79,11 @@ function DrawPanel({
 
       {brush === 'eraser' ? (
         <View style={styles.eraserDisplay}>
-          <Text style={styles.eraserIcon}>⌫</Text>
+          <View style={styles.eraserShape}>
+            <View style={styles.eraserPink} />
+            <View style={styles.eraserCream} />
+            <View style={styles.eraserStripe} />
+          </View>
           <Text style={styles.panelHint}>Swipe over any element to erase it.</Text>
         </View>
       ) : (
@@ -497,8 +501,22 @@ const styles = StyleSheet.create({
   colorDotActive: { borderColor: '#91040C', transform: [{ scale: 1.2 }] },
 
   // Eraser display
-  eraserDisplay: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  eraserIcon:    { fontSize: 28, color: '#555' },
+  eraserDisplay: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  eraserShape: {
+    width: 44, height: 22,
+    borderRadius: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    transform: [{ rotate: '-15deg' }],
+    flexDirection: 'row',
+  },
+  eraserPink:  { width: 18, backgroundColor: '#f4a0b0' },
+  eraserCream: { flex: 1,   backgroundColor: '#fdf3e3' },
+  eraserStripe: {
+    position: 'absolute', left: 18, top: 0, bottom: 0,
+    width: 1.5, backgroundColor: '#d0b090',
+  },
 
   // Text panel
   bigAddBtn: {
