@@ -75,7 +75,7 @@ export default function TripPage({ index, trip, pageState, rotateAnim, onTitlePr
             titleFont={trip.titleFont}
             onTitlePress={onTitlePress}
           />
-          <StickerLayer trip={trip} bookScale={bookScale} />
+          <StickerLayer trip={trip} bookScale={bookScale} readOnly />
           <Text style={styles.pageNum}>{String(index + 1).padStart(2, '0')}</Text>
           {onDeletePress && pageState === 'active' && (
             <TouchableOpacity

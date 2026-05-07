@@ -356,19 +356,9 @@ export default function CardEditor({ trip: tripProp, visible, onClose }: Props) 
           <Text style={styles.topTitle} numberOfLines={1}>
             {trip.customName ?? trip.name}
           </Text>
-          <View style={styles.topRight}>
-            {/* Undo — ↺ return symbol */}
-            <TouchableOpacity onPress={undo} disabled={history.length === 0} hitSlop={10}>
-              <Text style={[styles.topUndo, history.length === 0 && styles.topUndoDisabled]}>↺</Text>
-            </TouchableOpacity>
-            {/* Save — floppy disk shape */}
-            <TouchableOpacity onPress={onClose} hitSlop={10}>
-              <View style={styles.saveDisk}>
-                <View style={styles.saveDiskSlot} />
-                <View style={styles.saveDiskLabel} />
-              </View>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={undo} disabled={history.length === 0} hitSlop={10} style={styles.topUndoBtn}>
+            <Text style={[styles.topUndo, history.length === 0 && styles.topUndoDisabled]}>↺</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Card canvas ── */}
@@ -484,30 +474,9 @@ const styles = StyleSheet.create({
     fontFamily: 'PlayfairDisplay-Bold',
     fontSize: 15, color: '#1a1a1a', letterSpacing: 0.3,
   },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: 14, width: 62, justifyContent: 'flex-end' },
+  topUndoBtn:      { width: 32, alignItems: 'flex-end' },
   topUndo:         { fontFamily: 'DMSans-Regular', fontSize: 18, color: '#1a1a1a' },
   topUndoDisabled: { color: '#ccc' },
-
-  // Save disk (floppy disk shape)
-  saveDisk: {
-    width: 18, height: 18,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 2,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    padding: 2,
-  },
-  saveDiskSlot: {
-    position: 'absolute', top: 2, left: 2,
-    width: 8, height: 6,
-    backgroundColor: '#666',
-    borderRadius: 1,
-  },
-  saveDiskLabel: {
-    height: 5,
-    backgroundColor: '#555',
-    borderRadius: 1,
-  },
 
   // ── Tool strip ──
   toolStrip: {

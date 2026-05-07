@@ -46,11 +46,12 @@ interface ElementProps {
   bookScale: number;
   onBringFront: () => void;
   onSendBack: () => void;
+  readOnly?: boolean;
 }
 
 function DraggableEl({
   el, isSelected, onSelect, onUpdate, onRemove, onDuplicate,
-  bookScale, onBringFront, onSendBack,
+  bookScale, onBringFront, onSendBack, readOnly,
 }: ElementProps) {
   // Track TextInput focus so the input stays visible while typing (even after el.text is non-empty)
   const [textFocused, setTextFocused] = useState(el.type === 'text' && !el.text);
@@ -65,6 +66,43 @@ function DraggableEl({
   const moved      = useRef(false);
 
   const isStaticPath = el.type === 'path' && !el.draggable;
+
+  // ── Read-only display mode (book screen) ────────────────────────────────────
+  const w0 = getW(el);
+  const h0 = getH(el);
+  const rot0 = el.rotation ?? 0;
+  if (readOnly) {
+    if (isStaticPath) {
+      const pw = (el.width ?? 40) * el.scale;
+      const ph = (el.height ?? 40) * el.scale;
+      return (
+        <View style={{ position: 'absolute', left: el.x, top: el.y }}>
+          <Svg width={pw} height={ph} viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}>
+            <Path d={el.pathD ?? ''} stroke={el.strokeColor ?? '#1a1a1a'}
+              strokeWidth={el.strokeWidth ?? 2} strokeOpacity={el.strokeOpacity ?? 1}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </View>
+      );
+    }
+    return (
+      <View style={{ position: 'absolute', left: el.x, top: el.y, width: w0, height: h0, transform: [{ rotate: `${rot0}deg` }] }}>
+        {el.type === 'image' ? (
+          <Image source={{ uri: el.uri! }} style={{ width: w0, height: h0 }} resizeMode="contain" />
+        ) : el.type === 'path' ? (
+          <Svg width={w0} height={h0} viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}>
+            <Path d={el.pathD ?? ''} stroke={el.strokeColor ?? '#1a1a1a'}
+              strokeWidth={el.strokeWidth ?? 8} strokeOpacity={el.strokeOpacity ?? 1}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        ) : (
+          <Text style={{ fontFamily: el.fontFamily ?? 'DMSans-Regular', fontSize: (el.fontSize ?? 14) * el.scale, color: el.color ?? '#1a1a1a' }}>
+            {el.text}
+          </Text>
+        )}
+      </View>
+    );
+  }
 
   // ── Main drag/tap PanResponder ──────────────────────────────────────────────
   const dragPan = useRef(
@@ -314,9 +352,9 @@ function DraggableEl({
 
 // ─── StickerLayer ─────────────────────────────────────────────────────────────
 
-interface Props { trip: Trip; bookScale?: number; }
+interface Props { trip: Trip; bookScale?: number; readOnly?: boolean; }
 
-export default function StickerLayer({ trip, bookScale = 1 }: Props) {
+export default function StickerLayer({ trip, bookScale = 1, readOnly }: Props) {
   const { updateElement, removeElement, addElement } = useTripStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -353,6 +391,7 @@ export default function StickerLayer({ trip, bookScale = 1 }: Props) {
           bookScale={bookScale}
           onBringFront={() => bringFront(el.id)}
           onSendBack={() => sendBack(el.id)}
+          readOnly={readOnly}
         />
       ))}
     </View>
