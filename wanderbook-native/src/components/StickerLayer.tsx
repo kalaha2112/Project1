@@ -1,138 +1,193 @@
 import { useRef, useState } from 'react';
 import {
   View, Image, Text, TextInput, PanResponder,
-  TouchableOpacity, StyleSheet, ScrollView,
+  TouchableOpacity, StyleSheet,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Trip, CardElement, useTripStore } from '../store/tripStore';
 
-const SCALES = [0.5, 1.0, 1.5, 2.0];
-const SIZES  = [10, 14, 20, 28];
-const FONTS  = [
-  { key: 'PlayfairDisplay-Black',         short: 'PF●'  },
+const SIZES = [10, 14, 20, 28];
+const FONTS = [
+  { key: 'PlayfairDisplay-Black',         short: 'PF●'   },
   { key: 'PlayfairDisplay-Bold',          short: 'PF Bd' },
   { key: 'PlayfairDisplay-BoldItalic',    short: 'PF It' },
   { key: 'PlayfairDisplay-Italic',        short: 'PF Li' },
   { key: 'BebasNeue',                     short: 'Bebas' },
   { key: 'DMSans-Regular',               short: 'DM'    },
   { key: 'DMSans-Medium',               short: 'DM Md' },
-  { key: 'CormorantGaramond-LightItalic', short: 'CG'    },
+  { key: 'CormorantGaramond-LightItalic', short: 'CG'   },
 ];
+
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function getW(el: CardElement): number {
+  if (el.type === 'text') {
+    return Math.max(60, ((el.text?.length ?? 5) * (el.fontSize ?? 14) * 0.55 + 12) * el.scale);
+  }
+  return (el.width ?? 80) * el.scale;
+}
+
+function getH(el: CardElement): number {
+  if (el.type === 'text') return (el.fontSize ?? 14) * el.scale * 1.6 + 6;
+  return (el.height ?? 80) * el.scale;
+}
+
+// ─── DraggableEl ─────────────────────────────────────────────────────────────
 
 interface ElementProps {
   el: CardElement;
-  tripId: string;
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (patch: Partial<CardElement>) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
   bookScale: number;
-  allElements: CardElement[];
   onBringFront: () => void;
   onSendBack: () => void;
 }
 
 function DraggableEl({
-  el, isSelected, onSelect, onUpdate, onRemove,
+  el, isSelected, onSelect, onUpdate, onRemove, onDuplicate,
   bookScale, onBringFront, onSendBack,
 }: ElementProps) {
-  const refs = useRef({ el, isSelected, onSelect, onUpdate, onRemove, bookScale });
-  refs.current = { el, isSelected, onSelect, onUpdate, onRemove, bookScale };
+  // Stable refs — all PanResponders are created once, must read current values
+  const R = useRef({ el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale });
+  R.current = { el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale };
 
-  const startPos  = useRef({ x: 0, y: 0 });
-  const moved     = useRef(false);
-  const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPos   = useRef({ x: 0, y: 0 });
+  const startScale = useRef(1);
+  const startRot   = useRef(0);
+  const moved      = useRef(false);
 
-  const isDraggablePath = el.type === 'path' && el.draggable;
-  const isStaticPath    = el.type === 'path' && !el.draggable;
+  const isStaticPath = el.type === 'path' && !el.draggable;
 
-  const panResponder = useRef(
+  // ── Main drag/tap PanResponder ──────────────────────────────────────────────
+  const dragPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => {
-        if (isStaticPath) return false;
-        return !(refs.current.isSelected && refs.current.el.type === 'text');
-      },
+      onStartShouldSetPanResponder: () =>
+        // Let TextInput handle its own touches when a text element is selected
+        !(R.current.isSelected && R.current.el.type === 'text'),
       onPanResponderGrant: () => {
-        startPos.current = { x: refs.current.el.x, y: refs.current.el.y };
+        startPos.current = { x: R.current.el.x, y: R.current.el.y };
         moved.current = false;
-        longTimer.current = setTimeout(() => refs.current.onSelect(), 400);
       },
       onPanResponderMove: (_, g) => {
-        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) {
-          moved.current = true;
-          if (longTimer.current) { clearTimeout(longTimer.current); longTimer.current = null; }
-        }
-        const bs = refs.current.bookScale;
-        refs.current.onUpdate({
+        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) moved.current = true;
+        const bs = R.current.bookScale;
+        R.current.onUpdate({
           x: startPos.current.x + g.dx / bs,
           y: startPos.current.y + g.dy / bs,
         });
       },
       onPanResponderRelease: (_, g) => {
-        if (longTimer.current) { clearTimeout(longTimer.current); longTimer.current = null; }
-        const bs = refs.current.bookScale;
-        if (!moved.current) refs.current.onSelect();
-        else refs.current.onUpdate({
-          x: startPos.current.x + g.dx / bs,
-          y: startPos.current.y + g.dy / bs,
-        });
+        if (!moved.current) {
+          R.current.onSelect();
+        } else {
+          const bs = R.current.bookScale;
+          R.current.onUpdate({
+            x: startPos.current.x + g.dx / bs,
+            y: startPos.current.y + g.dy / bs,
+          });
+        }
       },
     })
   ).current;
 
+  // ── Resize handle (bottom-right corner) ────────────────────────────────────
+  const resizePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder:        () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: () => { startScale.current = R.current.el.scale; },
+      onPanResponderMove: (_, g) => {
+        const delta = (g.dx + g.dy) / (160 * R.current.bookScale);
+        R.current.onUpdate({ scale: Math.max(0.2, Math.min(4, startScale.current + delta)) });
+      },
+      onPanResponderRelease: () => {},
+    })
+  ).current;
+
+  // ── Rotate handle (top, floating above element) ─────────────────────────────
+  const rotatePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder:        () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: () => { startRot.current = R.current.el.rotation ?? 0; },
+      onPanResponderMove: (_, g) => {
+        R.current.onUpdate({ rotation: startRot.current + g.dx * 0.8 / R.current.bookScale });
+      },
+      onPanResponderRelease: () => {},
+    })
+  ).current;
+
+  const w = getW(el);
+  const h = getH(el);
+  const rot = el.rotation ?? 0;
+
+  // ── Static (pen/highlighter) path — tap to select, no drag ─────────────────
   if (isStaticPath) {
-    // Fixed stroke — rendered in place, tap selects for deletion only
-    const w = (el.width ?? 40) * el.scale;
-    const h = (el.height ?? 40) * el.scale;
+    const pw = (el.width  ?? 40) * el.scale;
+    const ph = (el.height ?? 40) * el.scale;
     return (
-      <View
-        style={{ position: 'absolute', left: el.x, top: el.y }}
-        onTouchEnd={() => onSelect()}
-      >
-        <Svg
-          width={w}
-          height={h}
-          viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}
-        >
-          <Path
-            d={el.pathD ?? ''}
-            stroke={el.strokeColor ?? '#1a1a1a'}
-            strokeWidth={el.strokeWidth ?? 2}
-            strokeOpacity={el.strokeOpacity ?? 1}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </Svg>
+      <View style={{ position: 'absolute', left: el.x, top: el.y }}>
+        <TouchableOpacity onPress={onSelect} activeOpacity={1}>
+          <Svg width={pw} height={ph} viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}>
+            <Path
+              d={el.pathD ?? ''}
+              stroke={el.strokeColor ?? '#1a1a1a'}
+              strokeWidth={el.strokeWidth ?? 2}
+              strokeOpacity={el.strokeOpacity ?? 1}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+        </TouchableOpacity>
         {isSelected && (
-          <View style={styles.deleteBadge}>
-            <TouchableOpacity onPress={onRemove} hitSlop={6}>
+          <>
+            <View pointerEvents="none"
+              style={[styles.bbox, { position: 'absolute', top: 0, left: 0, width: pw, height: ph }]}
+            />
+            <TouchableOpacity style={styles.deleteBadge} onPress={onRemove} hitSlop={6}>
               <Text style={styles.deleteBadgeText}>✕</Text>
             </TouchableOpacity>
-          </View>
+            <View style={[styles.actionBar, { position: 'absolute', top: ph + 4, left: 0 }]}>
+              <TouchableOpacity style={styles.actionBtn} onPress={onDuplicate}>
+                <Text style={styles.actionBtnText}>⧉</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn} onPress={onBringFront}>
+                <Text style={styles.actionBtnText}>↑</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn} onPress={onSendBack}>
+                <Text style={styles.actionBtnText}>↓</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
       </View>
     );
   }
 
+  // ── Draggable element (image, brush path, text) ─────────────────────────────
   return (
     <View
-      style={{ position: 'absolute', left: el.x, top: el.y }}
-      {...panResponder.panHandlers}
+      style={{
+        position: 'absolute',
+        left: el.x,
+        top: el.y,
+        width: w,
+        height: h,
+        transform: [{ rotate: `${rot}deg` }],
+      }}
+      {...dragPan.panHandlers}
     >
+      {/* ── Content ── */}
       {el.type === 'image' ? (
-        <Image
-          source={{ uri: el.uri! }}
-          style={{ width: (el.width ?? 80) * el.scale, height: (el.height ?? 80) * el.scale }}
-          resizeMode="contain"
-        />
+        <Image source={{ uri: el.uri! }} style={{ width: w, height: h }} resizeMode="contain" />
       ) : el.type === 'path' ? (
-        // Draggable brush stroke
-        <Svg
-          width={(el.width ?? 40) * el.scale}
-          height={(el.height ?? 40) * el.scale}
-          viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}
-        >
+        <Svg width={w} height={h} viewBox={`0 0 ${el.width ?? 40} ${el.height ?? 40}`}>
           <Path
             d={el.pathD ?? ''}
             stroke={el.strokeColor ?? '#1a1a1a'}
@@ -151,8 +206,7 @@ function DraggableEl({
             fontFamily: el.fontFamily ?? 'DMSans-Regular',
             fontSize:   (el.fontSize  ?? 14) * el.scale,
             color:      el.color      ?? '#1a1a1a',
-            minWidth: 60,
-            padding: 0,
+            minWidth: 60, padding: 0,
           }}
           multiline
           blurOnSubmit
@@ -167,39 +221,110 @@ function DraggableEl({
         </Text>
       )}
 
+      {/* ── Selection handles & toolkit ── */}
       {isSelected && (
-        <View style={styles.deleteBadge}>
-          <TouchableOpacity onPress={onRemove} hitSlop={6}>
+        <>
+          {/* Dashed bounding box */}
+          <View
+            pointerEvents="none"
+            style={[styles.bbox, { position: 'absolute', top: 0, left: 0, width: w, height: h }]}
+          />
+
+          {/* Rotate handle — top center, above element */}
+          <View
+            style={[styles.rotateHandle, { position: 'absolute', top: -26, left: w / 2 - 8 }]}
+            {...rotatePan.panHandlers}
+          />
+
+          {/* Resize handle — bottom-right corner */}
+          <View
+            style={[styles.resizeHandle, { position: 'absolute', bottom: -7, right: -7 }]}
+            {...resizePan.panHandlers}
+          />
+
+          {/* Delete badge — top-right */}
+          <TouchableOpacity style={styles.deleteBadge} onPress={onRemove} hitSlop={6}>
             <Text style={styles.deleteBadgeText}>✕</Text>
           </TouchableOpacity>
-        </View>
+
+          {/* Action bar — below element */}
+          <View style={[styles.actionBar, { position: 'absolute', top: h + 4, left: 0 }]}>
+            <TouchableOpacity style={styles.actionBtn} onPress={onDuplicate}>
+              <Text style={styles.actionBtnText}>⧉</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={onBringFront}>
+              <Text style={styles.actionBtnText}>↑</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={onSendBack}>
+              <Text style={styles.actionBtnText}>↓</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Font controls — text elements only */}
+          {el.type === 'text' && (
+            <>
+              <View style={[styles.textSizeBar, { position: 'absolute', top: h + 30, left: 0 }]}>
+                {SIZES.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.textBarBtn, el.fontSize === s && styles.textBarBtnActive]}
+                    onPress={() => onUpdate({ fontSize: s })}
+                  >
+                    <Text style={[styles.textBarText, el.fontSize === s && styles.textBarTextActive]}>
+                      {s}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={[styles.textFontBar, { position: 'absolute', top: h + 56, left: 0 }]}>
+                {FONTS.map((f) => (
+                  <TouchableOpacity
+                    key={f.key}
+                    style={[styles.textBarBtn, el.fontFamily === f.key && styles.textBarBtnActive]}
+                    onPress={() => onUpdate({ fontFamily: f.key })}
+                  >
+                    <Text style={[
+                      { fontFamily: f.key, fontSize: 9, color: '#aaa' },
+                      el.fontFamily === f.key && styles.textBarTextActive,
+                    ]}>
+                      {f.short}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+        </>
       )}
     </View>
   );
 }
 
+// ─── StickerLayer ─────────────────────────────────────────────────────────────
+
 interface Props { trip: Trip; bookScale?: number; }
 
 export default function StickerLayer({ trip, bookScale = 1 }: Props) {
-  const { updateElement, removeElement } = useTripStore();
+  const { updateElement, removeElement, addElement } = useTripStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (trip.elements.length === 0) return null;
 
-  const sorted     = [...trip.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
-  const selectedEl = sorted.find((e) => e.id === selectedId) ?? null;
-  const isText     = selectedEl?.type === 'text';
-  const isImage    = selectedEl?.type === 'image';
-  const isPath     = selectedEl?.type === 'path';
+  const sorted = [...trip.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  const maxZ   = Math.max(0, ...trip.elements.map((e) => e.zIndex ?? 0));
+  const minZ   = Math.min(0, ...trip.elements.map((e) => e.zIndex ?? 0));
 
-  const maxZ = Math.max(0, ...trip.elements.map((e) => e.zIndex ?? 0));
-  const minZ = Math.min(0, ...trip.elements.map((e) => e.zIndex ?? 0));
+  function bringFront(id: string) { updateElement(trip.id, id, { zIndex: maxZ + 1 }); }
+  function sendBack(id: string)   { updateElement(trip.id, id, { zIndex: minZ - 1 }); }
 
-  function bringFront(id: string) {
-    updateElement(trip.id, id, { zIndex: maxZ + 1 });
-  }
-  function sendBack(id: string) {
-    updateElement(trip.id, id, { zIndex: minZ - 1 });
+  function duplicate(el: CardElement) {
+    addElement(trip.id, {
+      ...el,
+      id: makeId(),
+      x: el.x + 10,
+      y: el.y + 10,
+      zIndex: maxZ + 1,
+    });
   }
 
   return (
@@ -208,116 +333,56 @@ export default function StickerLayer({ trip, bookScale = 1 }: Props) {
         <DraggableEl
           key={el.id}
           el={el}
-          tripId={trip.id}
-          allElements={trip.elements}
           isSelected={selectedId === el.id}
           onSelect={() => setSelectedId((p) => (p === el.id ? null : el.id))}
           onUpdate={(patch) => updateElement(trip.id, el.id, patch)}
           onRemove={() => { removeElement(trip.id, el.id); setSelectedId(null); }}
+          onDuplicate={() => duplicate(el)}
           bookScale={bookScale}
           onBringFront={() => bringFront(el.id)}
           onSendBack={() => sendBack(el.id)}
         />
       ))}
-
-      {/* Image selected: scale + layer bar */}
-      {selectedId && isImage && (
-        <View style={styles.controlBar}>
-          {SCALES.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[styles.scaleBtn, selectedEl!.scale === s && styles.btnActive]}
-              onPress={() => updateElement(trip.id, selectedId, { scale: s })}
-            >
-              <Text style={[styles.scaleBtnText, selectedEl!.scale === s && styles.btnTextActive]}>
-                {s}×
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <View style={styles.barDivider} />
-          <TouchableOpacity style={styles.layerBtn} onPress={() => bringFront(selectedId)}>
-            <Text style={styles.layerBtnText}>↑</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.layerBtn} onPress={() => sendBack(selectedId)}>
-            <Text style={styles.layerBtnText}>↓</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Draggable brush selected: scale + layer bar */}
-      {selectedId && isPath && selectedEl?.draggable && (
-        <View style={styles.controlBar}>
-          {SCALES.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[styles.scaleBtn, selectedEl!.scale === s && styles.btnActive]}
-              onPress={() => updateElement(trip.id, selectedId, { scale: s })}
-            >
-              <Text style={[styles.scaleBtnText, selectedEl!.scale === s && styles.btnTextActive]}>
-                {s}×
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <View style={styles.barDivider} />
-          <TouchableOpacity style={styles.layerBtn} onPress={() => bringFront(selectedId)}>
-            <Text style={styles.layerBtnText}>↑</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.layerBtn} onPress={() => sendBack(selectedId)}>
-            <Text style={styles.layerBtnText}>↓</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Text selected: size row + font row + layer */}
-      {selectedId && isText && (
-        <View style={styles.textControlBar}>
-          <View style={styles.sizeRow}>
-            {SIZES.map((s) => (
-              <TouchableOpacity
-                key={s}
-                style={[styles.sizeBtn, selectedEl!.fontSize === s && styles.btnActive]}
-                onPress={() => updateElement(trip.id, selectedId, { fontSize: s })}
-              >
-                <Text style={[styles.sizeBtnText, selectedEl!.fontSize === s && styles.btnTextActive]}>
-                  {s}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <View style={styles.barDivider} />
-            <TouchableOpacity style={styles.layerBtn} onPress={() => bringFront(selectedId)}>
-              <Text style={styles.layerBtnText}>↑</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.layerBtn} onPress={() => sendBack(selectedId)}>
-              <Text style={styles.layerBtnText}>↓</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.fontScroll}>
-            {FONTS.map((f) => (
-              <TouchableOpacity
-                key={f.key}
-                style={[styles.fontBtn, selectedEl!.fontFamily === f.key && styles.btnActive]}
-                onPress={() => updateElement(trip.id, selectedId, { fontFamily: f.key })}
-              >
-                <Text
-                  style={[
-                    { fontFamily: f.key, fontSize: 9, color: '#999' },
-                    selectedEl!.fontFamily === f.key && styles.btnTextActive,
-                  ]}
-                >
-                  {f.short}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  bbox: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#91040C',
+    borderRadius: 2,
+  },
+
+  rotateHandle: {
+    width: 16, height: 16,
+    borderRadius: 8,
+    backgroundColor: '#91040C',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+
+  resizeHandle: {
+    width: 14, height: 14,
+    borderRadius: 3,
+    backgroundColor: '#91040C',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+
   deleteBadge: {
-    position: 'absolute', top: -10, right: -10,
+    position: 'absolute', top: -9, right: -9,
     width: 18, height: 18, borderRadius: 9,
     backgroundColor: '#1a1a1a',
     alignItems: 'center', justifyContent: 'center',
@@ -325,30 +390,29 @@ const styles = StyleSheet.create({
   },
   deleteBadgeText: { color: '#fff', fontSize: 7, fontFamily: 'DMSans-Regular' },
 
-  controlBar: {
-    position: 'absolute', bottom: 8, left: 8,
-    flexDirection: 'row', gap: 4, alignItems: 'center',
+  actionBar: {
+    flexDirection: 'row', gap: 2,
     backgroundColor: 'rgba(26,26,26,0.82)',
-    borderRadius: 8, padding: 5, zIndex: 30,
+    borderRadius: 6, padding: 3,
+    zIndex: 20,
   },
-  scaleBtn:     { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5 },
-  scaleBtnText: { fontFamily: 'DMSans-Regular', fontSize: 9, letterSpacing: 0.3, color: '#888' },
+  actionBtn:     { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 },
+  actionBtnText: { color: '#ddd', fontSize: 11, fontFamily: 'DMSans-Regular' },
 
-  barDivider: { width: 1, height: 14, backgroundColor: 'rgba(255,255,255,0.2)', marginHorizontal: 2 },
-  layerBtn:   { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 5 },
-  layerBtnText: { color: '#ccc', fontSize: 13, lineHeight: 15 },
-
-  textControlBar: {
-    position: 'absolute', bottom: 8, left: 8, right: 8,
-    backgroundColor: 'rgba(26,26,26,0.85)',
-    borderRadius: 8, padding: 5, gap: 4, zIndex: 30,
+  textSizeBar: {
+    flexDirection: 'row', gap: 2,
+    backgroundColor: 'rgba(26,26,26,0.82)',
+    borderRadius: 6, padding: 3,
+    zIndex: 20,
   },
-  sizeRow:    { flexDirection: 'row', gap: 4, alignItems: 'center' },
-  sizeBtn:    { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
-  sizeBtnText:{ fontFamily: 'DMSans-Regular', fontSize: 9, color: '#888' },
-  fontScroll: { flexGrow: 0 },
-  fontBtn:    { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, marginRight: 2 },
-
-  btnActive:     { backgroundColor: '#91040C' },
-  btnTextActive: { color: '#fff' },
+  textFontBar: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 2,
+    backgroundColor: 'rgba(26,26,26,0.82)',
+    borderRadius: 6, padding: 3,
+    zIndex: 20,
+  },
+  textBarBtn:       { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  textBarBtnActive: { backgroundColor: '#91040C' },
+  textBarText:      { fontFamily: 'DMSans-Regular', fontSize: 9, color: '#888' },
+  textBarTextActive: { color: '#fff' },
 });

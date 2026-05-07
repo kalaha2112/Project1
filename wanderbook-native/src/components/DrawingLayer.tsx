@@ -47,7 +47,6 @@ function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-// stroke params per brush type
 const BRUSH_PARAMS: Record<DrawBrush, { width: number; opacity: number; draggable: boolean }> = {
   pen:         { width: 2,  opacity: 1.0, draggable: false },
   brush:       { width: 10, opacity: 1.0, draggable: true  },
@@ -58,12 +57,14 @@ const BRUSH_PARAMS: Record<DrawBrush, { width: number; opacity: number; draggabl
 export default function DrawingLayer({
   tripId, elements, brush, strokeColor, onBeforeDraw, onNextZIndex,
 }: Props) {
-  const { addElement, removeElement } = useTripStore();
+  const { addElement } = useTripStore();
   const [livePathD, setLivePathD] = useState('');
   const points = useRef<Point[]>([]);
   const hasPushedHistory = useRef(false);
 
-  const params = BRUSH_PARAMS[brush];
+  // Stable refs — PanResponder is created once but must read current prop values
+  const R = useRef({ brush, strokeColor, onBeforeDraw, onNextZIndex, elements });
+  R.current = { brush, strokeColor, onBeforeDraw, onNextZIndex, elements };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -72,23 +73,23 @@ export default function DrawingLayer({
 
       onPanResponderGrant: (e) => {
         const { locationX: x, locationY: y } = e.nativeEvent;
+        const { brush: b, elements: els, onBeforeDraw: before } = R.current;
         hasPushedHistory.current = false;
 
-        if (brush === 'eraser') {
-          // Erase elements whose bounding box contains the touch point
-          const { addElement: _a, removeElement: rm } = useTripStore.getState();
-          elements.forEach((el) => {
+        if (b === 'eraser') {
+          const { removeElement } = useTripStore.getState();
+          els.forEach((el) => {
             const elW = (el.width  ?? (el.type === 'text' ? 80 : 40)) * el.scale;
             const elH = (el.height ?? (el.type === 'text' ? 20 : 40)) * el.scale;
             if (x >= el.x && x <= el.x + elW && y >= el.y && y <= el.y + elH) {
-              if (!hasPushedHistory.current) { onBeforeDraw(); hasPushedHistory.current = true; }
-              rm(tripId, el.id);
+              if (!hasPushedHistory.current) { before(); hasPushedHistory.current = true; }
+              removeElement(tripId, el.id);
             }
           });
           return;
         }
 
-        onBeforeDraw();
+        before();
         hasPushedHistory.current = true;
         points.current = [{ x, y }];
         setLivePathD(`M ${x} ${y}`);
@@ -96,15 +97,16 @@ export default function DrawingLayer({
 
       onPanResponderMove: (e) => {
         const { locationX: x, locationY: y } = e.nativeEvent;
+        const { brush: b, elements: els, onBeforeDraw: before } = R.current;
 
-        if (brush === 'eraser') {
-          const { removeElement: rm } = useTripStore.getState();
-          elements.forEach((el) => {
+        if (b === 'eraser') {
+          const { removeElement } = useTripStore.getState();
+          els.forEach((el) => {
             const elW = (el.width  ?? (el.type === 'text' ? 80 : 40)) * el.scale;
             const elH = (el.height ?? (el.type === 'text' ? 20 : 40)) * el.scale;
             if (x >= el.x && x <= el.x + elW && y >= el.y && y <= el.y + elH) {
-              if (!hasPushedHistory.current) { onBeforeDraw(); hasPushedHistory.current = true; }
-              rm(tripId, el.id);
+              if (!hasPushedHistory.current) { before(); hasPushedHistory.current = true; }
+              removeElement(tripId, el.id);
             }
           });
           return;
@@ -115,29 +117,28 @@ export default function DrawingLayer({
       },
 
       onPanResponderRelease: () => {
-        if (brush === 'eraser' || points.current.length < 2) {
+        const { brush: b, strokeColor: color, onNextZIndex: nextZ } = R.current;
+
+        if (b === 'eraser' || points.current.length < 2) {
           setLivePathD('');
           points.current = [];
           return;
         }
 
+        const params = BRUSH_PARAMS[b];
         const { pathD, x, y, w, h } = normalizePath(points.current, params.width);
 
         addElement(tripId, {
-          id:           makeId(),
-          type:         'path',
-          x,
-          y,
-          scale:        1,
-          rotation:     0,
-          zIndex:       onNextZIndex(),
+          id:            makeId(),
+          type:          'path',
+          x, y, scale: 1, rotation: 0,
+          zIndex:        nextZ(),
           pathD,
-          strokeColor,
-          strokeWidth:  params.width,
+          strokeColor:   color,
+          strokeWidth:   params.width,
           strokeOpacity: params.opacity,
-          draggable:    params.draggable,
-          width:        w,
-          height:       h,
+          draggable:     params.draggable,
+          width: w, height: h,
         });
 
         setLivePathD('');
@@ -145,6 +146,8 @@ export default function DrawingLayer({
       },
     })
   ).current;
+
+  const params = BRUSH_PARAMS[brush];
 
   return (
     <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>

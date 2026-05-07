@@ -25,7 +25,8 @@ const TOOLS: { id: Tool; icon: string; label: string }[] = [
   { id: 'trip',    icon: '✈️',  label: 'Trip'    },
 ];
 
-const PALETTE = ['#1a1a1a', '#ffffff', '#91040C', '#2563eb', '#16a34a', '#d97706', '#ec4899', '#71717a'];
+const PALETTE       = ['#1a1a1a', '#ffffff', '#91040C', '#2563eb', '#16a34a', '#d97706', '#ec4899', '#71717a'];
+const HILITE_PALETTE = ['#fef08a', '#fca5a5', '#a5f3fc', '#86efac', '#fdba74', '#e9d5ff', '#fbcfe8', '#a3e635'];
 
 function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -39,10 +40,15 @@ interface Props {
 
 // ─── Draw options panel ───────────────────────────────────────────────────────
 function DrawPanel({
-  brush, onBrush, color, onColor,
+  brush, onBrush,
+  penColor, onPenColor,
+  brushColor, onBrushColor,
+  hiliteColor, onHiliteColor,
 }: {
   brush: DrawBrush; onBrush: (b: DrawBrush) => void;
-  color: string;    onColor: (c: string) => void;
+  penColor: string;    onPenColor:    (c: string) => void;
+  brushColor: string;  onBrushColor:  (c: string) => void;
+  hiliteColor: string; onHiliteColor: (c: string) => void;
 }) {
   const BRUSHES: { id: DrawBrush; label: string }[] = [
     { id: 'pen',         label: 'Pen'    },
@@ -50,6 +56,11 @@ function DrawPanel({
     { id: 'highlighter', label: 'Hi-lite'},
     { id: 'eraser',      label: 'Eraser' },
   ];
+
+  const activeColor   = brush === 'pen' ? penColor : brush === 'brush' ? brushColor : hiliteColor;
+  const onActiveColor = brush === 'pen' ? onPenColor : brush === 'brush' ? onBrushColor : onHiliteColor;
+  const palette       = brush === 'highlighter' ? HILITE_PALETTE : PALETTE;
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelRow}>
@@ -65,31 +76,31 @@ function DrawPanel({
           </TouchableOpacity>
         ))}
       </View>
-      <View style={styles.panelRow}>
-        {PALETTE.map((c) => (
-          <TouchableOpacity
-            key={c}
-            style={[
-              styles.colorDot,
-              { backgroundColor: c, borderColor: c === '#ffffff' ? '#e8e8e8' : c },
-              color === c && styles.colorDotActive,
-            ]}
-            onPress={() => onColor(c)}
-          />
-        ))}
-      </View>
-      {brush === 'pen' && (
-        <Text style={styles.panelHint}>Pen strokes are fixed. Switch to Brush for movable strokes.</Text>
+
+      {brush === 'eraser' ? (
+        <View style={styles.eraserDisplay}>
+          <Text style={styles.eraserIcon}>⌫</Text>
+          <Text style={styles.panelHint}>Swipe over any element to erase it.</Text>
+        </View>
+      ) : (
+        <View style={styles.panelRow}>
+          {palette.map((c) => (
+            <TouchableOpacity
+              key={c}
+              style={[
+                styles.colorDot,
+                { backgroundColor: c, borderColor: c === '#ffffff' ? '#e8e8e8' : c },
+                activeColor === c && styles.colorDotActive,
+              ]}
+              onPress={() => onActiveColor(c)}
+            />
+          ))}
+        </View>
       )}
-      {brush === 'brush' && (
-        <Text style={styles.panelHint}>Brush strokes can be moved and scaled with Select.</Text>
-      )}
-      {brush === 'highlighter' && (
-        <Text style={styles.panelHint}>Highlighter is semi-transparent and fixed in place.</Text>
-      )}
-      {brush === 'eraser' && (
-        <Text style={styles.panelHint}>Swipe over any element to erase it.</Text>
-      )}
+
+      {brush === 'pen'         && <Text style={styles.panelHint}>Pen strokes are fixed. Switch to Brush for movable strokes.</Text>}
+      {brush === 'brush'       && <Text style={styles.panelHint}>Brush strokes can be moved and scaled after drawing.</Text>}
+      {brush === 'highlighter' && <Text style={styles.panelHint}>Highlighter is semi-transparent and fixed in place.</Text>}
     </View>
   );
 }
@@ -232,12 +243,18 @@ function TripPanel({ trip }: { trip: Trip }) {
 }
 
 // ─── Root CardEditor ──────────────────────────────────────────────────────────
-export default function CardEditor({ trip, visible, onClose }: Props) {
+export default function CardEditor({ trip: tripProp, visible, onClose }: Props) {
   const { addElement, setElements } = useTripStore();
-  const [tool, setTool]         = useState<Tool>('select');
-  const [brush, setBrush]       = useState<DrawBrush>('pen');
-  const [strokeColor, setColor] = useState('#1a1a1a');
-  const [history, setHistory]   = useState<CardElement[][]>([]);
+  const [tool, setTool]             = useState<Tool>('select');
+  const [brush, setBrush]           = useState<DrawBrush>('pen');
+  const [penColor,    setPenColor]    = useState('#1a1a1a');
+  const [brushColor,  setBrushColor]  = useState('#1a1a1a');
+  const [hiliteColor, setHiliteColor] = useState('#fef08a');
+  const [history, setHistory]        = useState<CardElement[][]>([]);
+
+  const activeColor = brush === 'pen' ? penColor
+                    : brush === 'brush' ? brushColor
+                    : hiliteColor;
 
   const { width: screenW } = useWindowDimensions();
   const canvasW     = Math.min(screenW - 32, 680);
@@ -246,7 +263,8 @@ export default function CardEditor({ trip, visible, onClose }: Props) {
   const outerW      = canvasW + 4;
   const outerH      = canvasH + 4;
 
-  if (!trip) return null;
+  if (!tripProp) return null;
+  const trip = tripProp; // non-null alias so closures below see Trip, not Trip|null
 
   const Card = CARDS[trip.cardDesign];
 
@@ -337,7 +355,7 @@ export default function CardEditor({ trip, visible, onClose }: Props) {
                 tripId={trip.id}
                 elements={trip.elements}
                 brush={brush}
-                strokeColor={strokeColor}
+                strokeColor={activeColor}
                 onBeforeDraw={pushHistory}
                 onNextZIndex={nextZIndex}
               />
@@ -381,7 +399,9 @@ export default function CardEditor({ trip, visible, onClose }: Props) {
           {tool === 'draw' && (
             <DrawPanel
               brush={brush} onBrush={setBrush}
-              color={strokeColor} onColor={setColor}
+              penColor={penColor}       onPenColor={setPenColor}
+              brushColor={brushColor}   onBrushColor={setBrushColor}
+              hiliteColor={hiliteColor} onHiliteColor={setHiliteColor}
             />
           )}
           {tool === 'text' && (
@@ -475,6 +495,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   colorDotActive: { borderColor: '#91040C', transform: [{ scale: 1.2 }] },
+
+  // Eraser display
+  eraserDisplay: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  eraserIcon:    { fontSize: 28, color: '#555' },
 
   // Text panel
   bigAddBtn: {

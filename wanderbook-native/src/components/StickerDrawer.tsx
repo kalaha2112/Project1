@@ -49,8 +49,9 @@ export default function StickerDrawer({ onPlace }: Props) {
         Alert.alert('No image', 'Copy an image first (try "Lift Subject" in Photos), then tap Paste.');
         return;
       }
+      const base64 = img.data.replace(/^data:image\/\w+;base64,/, '');
       const path = (FileSystem.cacheDirectory ?? '') + `sticker_${Date.now()}.png`;
-      await FileSystem.writeAsStringAsync(path, img.data, {
+      await FileSystem.writeAsStringAsync(path, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
       addStickerTemplate({ id: makeId(), uri: path });
