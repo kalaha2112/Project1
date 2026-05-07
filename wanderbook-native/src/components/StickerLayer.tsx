@@ -52,9 +52,12 @@ function DraggableEl({
   el, isSelected, onSelect, onUpdate, onRemove, onDuplicate,
   bookScale, onBringFront, onSendBack,
 }: ElementProps) {
+  // Track TextInput focus so the input stays visible while typing (even after el.text is non-empty)
+  const [textFocused, setTextFocused] = useState(el.type === 'text' && !el.text);
+
   // Stable refs — all PanResponders are created once, must read current values
-  const R = useRef({ el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale });
-  R.current = { el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale };
+  const R = useRef({ el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale, textFocused });
+  R.current = { el, isSelected, onSelect, onUpdate, onRemove, onDuplicate, bookScale, textFocused };
 
   const startPos   = useRef({ x: 0, y: 0 });
   const startScale = useRef(1);
@@ -67,9 +70,8 @@ function DraggableEl({
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => {
-        const { isSelected, el } = R.current;
-        // Let TextInput handle touches when text is selected or empty
-        if (el.type === 'text' && (isSelected || !el.text)) return false;
+        const { isSelected, el, textFocused } = R.current;
+        if (el.type === 'text' && (isSelected || !el.text || textFocused)) return false;
         return true;
       },
       onPanResponderGrant: () => {
@@ -201,13 +203,15 @@ function DraggableEl({
             strokeLinejoin="round"
           />
         </Svg>
-      ) : (isSelected || !el.text) && el.type === 'text' ? (
+      ) : (isSelected || !el.text || textFocused) && el.type === 'text' ? (
         <TextInput
           value={el.text ?? ''}
           onChangeText={(t) => onUpdate({ text: t })}
           placeholder="T"
           placeholderTextColor="#1a1a1a"
           autoFocus={!el.text}
+          onFocus={() => setTextFocused(true)}
+          onBlur={() => setTextFocused(false)}
           style={{
             fontFamily: el.fontFamily ?? 'DMSans-Regular',
             fontSize:   (el.fontSize  ?? 14) * el.scale,
