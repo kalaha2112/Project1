@@ -2,36 +2,41 @@ import { useCallback, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
 import { useTripStore, PageState } from '../store/tripStore';
 
-const N = 5;
-const ANIM_LOCK_MS = 740;
+const ANIM_LOCK_MS  = 740;
 const OPEN_SETTLE_MS = 700;
-const CLOSE_MS = 900;
+const CLOSE_MS      = 900;
 
-// Degree value for each logical page state
 const DEG: Record<PageState, number> = {
-  waiting:     88,
-  incoming:    42,
-  active:       0,
+  waiting:       88,
+  incoming:      42,
+  active:         0,
   'flipping-up': -180,
-  past:        -180,
+  past:          -180,
 };
 
 export function usePageFlip() {
   const {
-    isOpen, isAnimating, activeIdx, pageStates,
+    isOpen, isAnimating, activeIdx, pageStates, trips,
     setOpen, setAnimating, setActiveIdx, setPageState, setAllPageStates,
   } = useTripStore();
 
-  // One Animated.Value per page for rotateX (in degrees)
-  const pageAnims = useRef(
-    Array.from({ length: N }, () => new Animated.Value(DEG.waiting))
+  const n = trips.length;
+
+  // One Animated.Value per page; grows dynamically when trips are added
+  const pageAnims = useRef<Animated.Value[]>(
+    Array.from({ length: Math.max(n, 1) }, () => new Animated.Value(DEG.waiting))
   ).current;
+
+  while (pageAnims.length < n) {
+    pageAnims.push(new Animated.Value(DEG.waiting));
+  }
 
   // Cover flip: 0 = closed, 1 = open
   const coverAnim = useRef(new Animated.Value(0)).current;
 
   const animatePage = useCallback(
     (i: number, state: PageState, delay = 0, springy = false) => {
+      if (i < 0 || i >= pageAnims.length) return;
       const toValue = DEG[state];
       const anim = springy
         ? Animated.spring(pageAnims[i], {
@@ -58,7 +63,6 @@ export function usePageFlip() {
     setAnimating(true);
     setOpen(true);
 
-    // Flip the cover open
     Animated.timing(coverAnim, {
       toValue: 1,
       duration: 900,
@@ -66,27 +70,24 @@ export function usePageFlip() {
       useNativeDriver: true,
     }).start();
 
-    // Pages rise after 200ms
     setTimeout(() => {
-      for (let i = 0; i < N; i++) {
-        if (i < activeIdx)      animatePage(i, 'past');
+      for (let i = 0; i < n; i++) {
+        if (i < activeIdx)       animatePage(i, 'past');
         else if (i === activeIdx) animatePage(i, 'active');
-        else                    animatePage(i, 'waiting');
+        else                     animatePage(i, 'waiting');
       }
     }, 200);
 
     setTimeout(() => setAnimating(false), OPEN_SETTLE_MS);
-  }, [isOpen, isAnimating, activeIdx, coverAnim, animatePage, setOpen, setAnimating]);
+  }, [isOpen, isAnimating, activeIdx, n, coverAnim, animatePage, setOpen, setAnimating]);
 
   const closeBook = useCallback(() => {
     if (!isOpen || isAnimating) return;
     setAnimating(true);
     setOpen(false);
 
-    // All pages drop
-    for (let i = 0; i < N; i++) animatePage(i, 'waiting');
+    for (let i = 0; i < n; i++) animatePage(i, 'waiting');
 
-    // Cover flips back after short delay
     setTimeout(() => {
       Animated.timing(coverAnim, {
         toValue: 0,
@@ -97,16 +98,15 @@ export function usePageFlip() {
     }, 80);
 
     setTimeout(() => {
-      setActiveIdx(1);
-      // Reset page anim values silently
+      setActiveIdx(0);
       pageAnims.forEach((a) => a.setValue(DEG.waiting));
-      setAllPageStates(['waiting', 'waiting', 'waiting', 'waiting', 'waiting']);
+      setAllPageStates(Array(pageAnims.length).fill('waiting') as PageState[]);
       setAnimating(false);
     }, CLOSE_MS);
-  }, [isOpen, isAnimating, coverAnim, pageAnims, animatePage, setOpen, setActiveIdx, setAllPageStates, setAnimating]);
+  }, [isOpen, isAnimating, n, coverAnim, pageAnims, animatePage, setOpen, setActiveIdx, setAllPageStates, setAnimating]);
 
   const goNext = useCallback(() => {
-    if (!isOpen || isAnimating || activeIdx >= N - 1) return;
+    if (!isOpen || isAnimating || activeIdx >= n - 1) return;
     setAnimating(true);
 
     const cur  = activeIdx;
@@ -114,7 +114,6 @@ export function usePageFlip() {
 
     animatePage(cur, 'flipping-up');
 
-    // Snap next to incoming, then animate to active
     pageAnims[next].setValue(DEG.incoming);
     setPageState(next, 'incoming');
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -126,7 +125,7 @@ export function usePageFlip() {
       setActiveIdx(next);
       setAnimating(false);
     }, ANIM_LOCK_MS);
-  }, [isOpen, isAnimating, activeIdx, pageAnims, animatePage, setActiveIdx, setAnimating, setPageState]);
+  }, [isOpen, isAnimating, activeIdx, n, pageAnims, animatePage, setActiveIdx, setAnimating, setPageState]);
 
   const goPrev = useCallback(() => {
     if (!isOpen || isAnimating || activeIdx <= 0) return;
@@ -137,7 +136,6 @@ export function usePageFlip() {
 
     animatePage(cur, 'waiting');
 
-    // Snap prev to flipping-up instantly, then spring back to active
     pageAnims[prev].setValue(DEG['flipping-up']);
     setPageState(prev, 'flipping-up');
     requestAnimationFrame(() => requestAnimationFrame(() => {

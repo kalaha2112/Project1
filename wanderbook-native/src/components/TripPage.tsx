@@ -1,4 +1,4 @@
-import { Animated, View, Text, StyleSheet } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { PageState, Trip } from '../store/tripStore';
 import ParisCard   from './cards/ParisCard';
 import KyotoCard   from './cards/KyotoCard';
@@ -26,9 +26,10 @@ interface Props {
   pageState: PageState;
   rotateAnim: Animated.Value;
   onTitlePress?: () => void;
+  onDeletePress?: () => void;
 }
 
-export default function TripPage({ index, trip, pageState, rotateAnim, onTitlePress }: Props) {
+export default function TripPage({ index, trip, pageState, rotateAnim, onTitlePress, onDeletePress }: Props) {
   const { bookScale } = useBookDimensions();
   if (pageState === 'waiting') return null;
 
@@ -76,6 +77,16 @@ export default function TripPage({ index, trip, pageState, rotateAnim, onTitlePr
           />
           <StickerLayer trip={trip} bookScale={bookScale} />
           <Text style={styles.pageNum}>{String(index + 1).padStart(2, '0')}</Text>
+          {onDeletePress && pageState === 'active' && (
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={onDeletePress}
+              hitSlop={8}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.deleteBtnText}>×</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
@@ -112,5 +123,16 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 8, right: 12, zIndex: 4,
     fontFamily: 'CormorantGaramond-LightItalic',
     fontSize: 10, color: '#ccc',
+  },
+  deleteBtn: {
+    position: 'absolute', top: 6, left: 8, zIndex: 4,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  deleteBtnText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 13, color: '#aaa',
+    lineHeight: 18, marginTop: -1,
   },
 });

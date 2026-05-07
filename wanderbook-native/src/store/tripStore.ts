@@ -81,6 +81,8 @@ interface AppState {
   setElements: (tripId: string, elements: CardElement[]) => void;
   addStickerTemplate: (t: StickerTemplate) => void;
   removeStickerTemplate: (id: string) => void;
+  addTrip: (trip: Trip) => void;
+  removeTrip: (id: string) => void;
 }
 
 const TRIPS: Trip[] = [
@@ -150,4 +152,22 @@ export const useTripStore = create<AppState>((set) => ({
 
   removeStickerTemplate: (id) =>
     set((s) => ({ stickerTemplates: s.stickerTemplates.filter((t) => t.id !== id) })),
+
+  addTrip: (trip) =>
+    set((s) => ({
+      trips:      [...s.trips, trip],
+      pageStates: [...s.pageStates, 'waiting' as const],
+    })),
+
+  removeTrip: (id) =>
+    set((s) => {
+      const idx = s.trips.findIndex((t) => t.id === id);
+      if (idx === -1) return s;
+      const trips      = s.trips.filter((_, i) => i !== idx);
+      const pageStates = s.pageStates.filter((_, i) => i !== idx);
+      const activeIdx  = s.activeIdx > 0 && s.activeIdx >= idx
+        ? s.activeIdx - 1
+        : s.activeIdx;
+      return { trips, pageStates, activeIdx: Math.min(activeIdx, Math.max(trips.length - 1, 0)) };
+    }),
 }));

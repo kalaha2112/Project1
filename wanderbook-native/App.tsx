@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
-  PanResponder, StyleSheet, StatusBar,
+  PanResponder, StyleSheet, StatusBar, Alert,
 } from 'react-native';
 import { useFonts } from 'expo-font';
 import {
@@ -34,12 +34,47 @@ function SuTravelBook() {
     coverAnim, pageAnims,
     openBook, closeBook, goNext, goPrev, jumpTo,
   } = usePageFlip();
-  const { trips } = useTripStore();
+  const { trips, addTrip, removeTrip } = useTripStore();
   const { bookW, bookH } = useBookDimensions();
   const outerW = bookW + 4;
   const outerH = bookH + 4;
   const [editingIdx, setEditingIdx]   = useState<number | null>(null);
   const [overviewIdx, setOverviewIdx] = useState<number | null>(null);
+
+  function handleAddTrip() {
+    const design = (trips.length % 5) as 0 | 1 | 2 | 3 | 4;
+    const titleFont = design < 2 ? 'PlayfairDisplay-Black' : 'BebasNeue';
+    const newIdx = trips.length;
+    addTrip({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name: 'New Trip',
+      country: '',
+      status: 'upcoming',
+      cardDesign: design,
+      titleFont,
+      elements: [],
+    });
+    setEditingIdx(newIdx);
+  }
+
+  function handleDeleteTrip(tripId: string, tripName: string) {
+    Alert.alert(
+      'Delete trip',
+      `Remove "${tripName}" from the book?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            closeBook();
+            // Remove after close animation finishes (900ms) to avoid mid-flip glitch
+            setTimeout(() => removeTrip(tripId), 1000);
+          },
+        },
+      ]
+    );
+  }
 
   // Footer fades in when book opens; map preview fades in when book closes
   const footerOpacity = useRef(new Animated.Value(0)).current;
@@ -121,10 +156,13 @@ function SuTravelBook() {
                 pageState={pageStates[i]}
                 rotateAnim={pageAnims[i]}
                 onTitlePress={pageStates[i] === 'active' ? () => setOverviewIdx(i) : undefined}
+                onDeletePress={pageStates[i] === 'active' && trips.length > 1
+                  ? () => handleDeleteTrip(trip.id, trip.customName ?? trip.name)
+                  : undefined}
               />
             ))}
             <View pointerEvents={isOpen ? 'none' : 'auto'}>
-              <BookCover coverAnim={coverAnim} onOpen={openBook} />
+              <BookCover coverAnim={coverAnim} onOpen={openBook} onAddTrip={handleAddTrip} />
             </View>
           </View>
           <BookOutline />

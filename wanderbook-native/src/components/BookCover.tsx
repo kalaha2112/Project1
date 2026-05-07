@@ -1,11 +1,12 @@
-import { Animated, TouchableWithoutFeedback, View, Text, StyleSheet } from 'react-native';
+import { Animated, TouchableWithoutFeedback, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 
 interface BookCoverProps {
   coverAnim: Animated.Value;
   onOpen: () => void;
+  onAddTrip?: () => void;
 }
 
-export default function BookCover({ coverAnim, onOpen }: BookCoverProps) {
+export default function BookCover({ coverAnim, onOpen, onAddTrip }: BookCoverProps) {
   const frontRotateX = coverAnim.interpolate({
     inputRange:  [0, 1],
     outputRange: ['0deg', '-180deg'],
@@ -45,6 +46,18 @@ export default function BookCover({ coverAnim, onOpen }: BookCoverProps) {
               {'Where will you be\n'}
               <Text style={styles.tapWord}>off to next?</Text>
             </Text>
+
+            {/* Add trip button — top-right corner */}
+            {onAddTrip && (
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={onAddTrip}
+                hitSlop={10}
+                activeOpacity={0.6}
+              >
+                <Text style={styles.addBtnText}>+</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </Animated.View>
 
@@ -100,5 +113,21 @@ const styles = StyleSheet.create({
   tapWord: {
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(145,4,12,0.35)',
+  },
+  addBtn: {
+    position: 'absolute',
+    top: 10, right: 10,
+    width: 26, height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnText: {
+    fontFamily: 'DMSans-Regular',
+    fontSize: 17,
+    color: '#aaa',
+    lineHeight: 22,
+    marginTop: -1,
   },
 });
