@@ -150,9 +150,29 @@ export function usePageFlip() {
 
   const jumpTo = useCallback((idx: number) => {
     if (!isOpen || isAnimating || idx === activeIdx) return;
-    if (idx > activeIdx) goNext();
-    else goPrev();
-  }, [isOpen, isAnimating, activeIdx, goNext, goPrev]);
+    setAnimating(true);
+
+    for (let i = 0; i < n; i++) {
+      if (i < idx) {
+        pageAnims[i].setValue(DEG.past);
+        setPageState(i, 'past');
+      } else if (i > idx) {
+        pageAnims[i].setValue(DEG.waiting);
+        setPageState(i, 'waiting');
+      }
+    }
+
+    pageAnims[idx].setValue(DEG.incoming);
+    setPageState(idx, 'incoming');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      animatePage(idx, 'active');
+    }));
+
+    setTimeout(() => {
+      setActiveIdx(idx);
+      setAnimating(false);
+    }, ANIM_LOCK_MS);
+  }, [isOpen, isAnimating, activeIdx, n, pageAnims, animatePage, setActiveIdx, setAnimating, setPageState]);
 
   return {
     isOpen, isAnimating, activeIdx, pageStates,

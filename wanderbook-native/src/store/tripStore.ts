@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type PageState = 'waiting' | 'active' | 'flipping-up' | 'past' | 'incoming';
 
@@ -96,7 +98,9 @@ const TRIPS: Trip[] = [
   { id: 'lisbon',  name: 'Lisbon',  country: 'Portugal',  status: 'upcoming', cardDesign: 4, titleFont: 'BebasNeue',             elements: [] },
 ];
 
-export const useTripStore = create<AppState>((set) => ({
+export const useTripStore = create<AppState>()(
+  persist(
+    (set) => ({
   isOpen:           false,
   activeIdx:        1,
   isAnimating:      false,
@@ -173,4 +177,15 @@ export const useTripStore = create<AppState>((set) => ({
         : s.activeIdx;
       return { trips, pageStates, activeIdx: Math.min(activeIdx, Math.max(trips.length - 1, 0)) };
     }),
-}));
+    }),
+    {
+      name: 'wanderbook-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        trips: state.trips,
+        stickerTemplates: state.stickerTemplates,
+        activeIdx: state.activeIdx,
+      }),
+    }
+  )
+);
