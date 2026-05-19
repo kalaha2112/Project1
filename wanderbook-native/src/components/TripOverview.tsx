@@ -6,6 +6,11 @@ import {
 import { Trip, useTripStore } from '../store/tripStore';
 import { useBookDimensions } from '../hooks/useBookDimensions';
 import CardEditor from './CardEditor';
+import ParisCard   from './cards/ParisCard';
+import KyotoCard   from './cards/KyotoCard';
+import BaliCard    from './cards/BaliCard';
+import MoroccoCard from './cards/MoroccoCard';
+import LisbonCard  from './cards/LisbonCard';
 
 type Section = 'itinerary' | 'ootd' | 'budget' | 'hotel' | 'flight';
 
