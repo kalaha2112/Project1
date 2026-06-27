@@ -124,6 +124,7 @@
   /* ---- icons (Lucide-style) ---- */
   const I = {
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5"/><path d="M12 4v12"/>',
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
@@ -163,6 +164,7 @@
       this._dragKey = null;
       this._plannerDrag = null;
       this._lastCoordKey = '';
+      this._history = [];
       this.stickerPanelOpen = false;
       this._stockStickerDrag = null;
       this._movingSticker = null;
@@ -186,6 +188,8 @@
     legByIndex(i) { const t = this.currentTrip(); return i === 0 ? t.outboundLeg : t.stops[i - 1].leg; }
 
     bump() { this.render(); this.scheduleSave(); this.touchMap(); }
+    snapshot() { this._history.push(clone(this.data)); if (this._history.length > 20) this._history.shift(); }
+    undo() { if (!this._history.length) return; this.data = this._history.pop(); this.migrate(); this._lastCoordKey = ''; this.bump(); }
 
     /* ---------- persistence ---------- */
     scheduleSave() {
@@ -331,21 +335,30 @@
     }
 
     /* ---------- mutators: stops / trips / todos ---------- */
-    insertStop(idx) { this.currentTrip().stops.splice(idx, 0, { city: 'New stop', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } }); this.bump(); }
-    removeStop(idx) { this.currentTrip().stops.splice(idx, 1); if (this.openStopIdx === idx) this.openStopIdx = null; this.bump(); }
+    insertStop(idx) {
+      this.currentTrip().stops.splice(idx, 0, { city: '', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } });
+      this._newStopIdx = idx;
+      this.bump();
+    }
+    removeStop(idx) { this.snapshot(); this.currentTrip().stops.splice(idx, 1); if (this.openStopIdx === idx) this.openStopIdx = null; this.bump(); }
     reorderStop(from, to) {
       if (from === to) return;
       const st = this.currentTrip().stops; const [it] = st.splice(from, 1); st.splice(to, 0, it);
       if (this.openStopIdx === from) this.openStopIdx = to; this.bump();
     }
-    resetRoute() { this.data.trips[this.data.active] = clone(DEFAULT_STATE.trips[this.data.active] || Object.values(DEFAULT_STATE.trips)[0]); this.bump(); }
+    resetRoute() {
+      if (!confirm('Reset this route to its default state? This cannot be undone.')) return;
+      this.snapshot();
+      this.data.trips[this.data.active] = clone(DEFAULT_STATE.trips[this.data.active] || Object.values(DEFAULT_STATE.trips)[0]);
+      this.bump();
+    }
     addTrip() {
       const key = 'trip' + Date.now();
       const n = Object.keys(this.data.trips).length + 1;
       this.data.trips[key] = {
-        label: 'Trip ' + n, depart: this.data.meta.depart, returnDate: this.data.meta.returnDate, travelers: this.data.meta.travelers || 2,
-        originLabel: 'New York (JFK)', outboundLeg: { mode: 'flight', duration: '', cost: 0 },
-        stops: [{ city: 'New stop', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } }], homeLabel: 'New York (JFK)', closet: []
+        label: 'Trip ' + n, depart: '', returnDate: '', travelers: this.data.meta.travelers || 2,
+        originLabel: '', outboundLeg: { mode: 'flight', duration: '', cost: 0 },
+        stops: [{ city: '', nights: 0, note: '', leg: { mode: 'flight', duration: '', cost: 0 } }], homeLabel: '', closet: []
       };
       this.data.active = key; this.bump();
     }
@@ -353,6 +366,7 @@
       const keys = Object.keys(this.data.trips);
       if (keys.length <= 1) return;
       if (!confirm('Remove this trip and everything in it?')) return;
+      this.snapshot();
       delete this.data.trips[key];
       if (this.data.active === key) this.data.active = Object.keys(this.data.trips)[0];
       this.bump();
@@ -365,7 +379,7 @@
       const re = {}; keys.forEach(k => re[k] = this.data.trips[k]); this.data.trips = re; this.bump();
     }
     addTodo() { this.data.meta.todos.push({ text: '', done: false }); this.bump(); }
-    removeTodo(i) { this.data.meta.todos.splice(i, 1); this.bump(); }
+    removeTodo(i) { this.snapshot(); this.data.meta.todos.splice(i, 1); this.bump(); }
 
     /* ---------- itinerary / accommodation ---------- */
     openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this.bump(); }
@@ -382,7 +396,7 @@
     addDayItem(stop, dayIdx) { this.ensureItinerary(stop); stop.itinerary[dayIdx].items.push({ time: '', text: '' }); this.bump(); }
     removeDayItem(stop, dayIdx, itemIdx) { stop.itinerary[dayIdx].items.splice(itemIdx, 1); this.bump(); }
     addAccomOption(stopIdx) { const s = this.currentTrip().stops[stopIdx]; if (!s.accom) s.accom = { options: [] }; s.accom.options.push({ id: Date.now(), name: '', link: '', totalPrice: '', features: '', distance: '', chosen: false }); this.bump(); }
-    removeAccomOption(stopIdx, optIdx) { this.currentTrip().stops[stopIdx].accom.options.splice(optIdx, 1); this.bump(); }
+    removeAccomOption(stopIdx, optIdx) { this.snapshot(); this.currentTrip().stops[stopIdx].accom.options.splice(optIdx, 1); this.bump(); }
     chooseAccomOption(stopIdx, optIdx) { const o = this.currentTrip().stops[stopIdx].accom.options; o.forEach((x, i) => x.chosen = (i === optIdx ? !x.chosen : false)); this.bump(); }
 
     /* ---------- outfit closet ---------- */
@@ -485,13 +499,15 @@
     }
     importFile(e) {
       const file = e.target.files[0]; if (!file) return;
+      if (!confirm('Import will replace your current trip data. Continue?')) { e.target.value = ''; return; }
       const reader = new FileReader();
       reader.onload = () => {
         try {
           const parsed = JSON.parse(reader.result);
           if (!parsed.trips || !parsed.meta) throw new Error('bad');
+          this.snapshot();
           this.data = parsed; this.migrate(); this._lastCoordKey = ''; this.bump();
-        } catch (err) { alert('Could not read that file — make sure it’s a JSON export from this tool.'); }
+        } catch (err) { alert('Could not read that file — make sure it is a JSON export from this tool.'); }
       };
       reader.readAsText(file); e.target.value = '';
     }
@@ -571,7 +587,7 @@
             </div>
             <aside class="aside">
               ${SHOW_MAP ? `<div style="display:flex;flex-direction:column;gap:8px;"><div id="map-holder"></div><div class="map-note"></div></div>` : ''}
-              ${this.renderSummary(nights, budget.grandTotal, budget.perPerson, milesNeeded)}
+              ${this.renderSummary(nights, budget.grandTotal, budget.perPerson, milesNeeded, meta.milesBalance || 0)}
               ${this.renderTodos(meta)}
             </aside>
           </div>
@@ -588,19 +604,28 @@
       const holder = this.root.querySelector('#map-holder');
       if (holder) { holder.appendChild(this.mapEl); if (this.leafletMap) this.leafletMap.invalidateSize(); }
       this.paintSaved();
+
+      // focus the city input of a newly inserted stop, then clear the flag
+      if (this._newStopIdx != null) {
+        const el = this.root.querySelector(`.stop-enter .city`);
+        if (el) { el.focus(); el.select(); }
+        this._newStopIdx = null;
+      }
     }
 
     renderHeader(meta, dateRangeStr) {
       return `<div class="header">
         <input class="trip-title" value="${escA(meta.title)}" data-ch="trip-title" placeholder="Name this trip">
         <span class="date-badge">${esc(dateRangeStr)}</span>
-        <span class="saved" style="opacity:0">saved ✓</span>
+        <span class="saved" style="opacity:0">saved</span>
         <div class="toolbar">
-          <button class="tool-btn" data-act="reset" title="Reset route" aria-label="Reset route">${svg(I.reset)}</button>
-          <button class="tool-btn sticker-toggle-btn${this.stickerPanelOpen ? ' active' : ''}" data-act="toggle-stickers" title="Photo stickers" aria-label="Photo stickers">${svg(I.sticker)}</button>
-          <button class="tool-btn" data-act="export" title="Export trip" aria-label="Export trip">${svg(I.download)}</button>
-          <button class="tool-btn" data-act="import" title="Import trip" aria-label="Import trip">${svg(I.upload)}</button>
+          <button class="tool-btn" data-act="undo" title="Undo (⌘Z)" aria-label="Undo" ${!this._history.length ? 'disabled' : ''}>${svg(I.undo)}<span class="tool-lbl">Undo</span></button>
+          <button class="tool-btn" data-act="reset" title="Reset route" aria-label="Reset route">${svg(I.reset)}<span class="tool-lbl">Reset</span></button>
+          <button class="tool-btn" data-act="export" title="Export trip" aria-label="Export trip">${svg(I.download)}<span class="tool-lbl">Export</span></button>
+          <button class="tool-btn" data-act="import" title="Import trip" aria-label="Import trip">${svg(I.upload)}<span class="tool-lbl">Import</span></button>
           <input type="file" accept="application/json" class="import-file" data-ch="import-file" style="display:none">
+          <div class="toolbar-divider"></div>
+          <button class="tool-btn sticker-toggle-btn${this.stickerPanelOpen ? ' active' : ''}" data-act="toggle-stickers" title="Memories" aria-label="Memories">${svg(I.sticker)}<span class="tool-lbl">Memory</span></button>
         </div>
       </div>`;
     }
@@ -639,7 +664,7 @@
           <span class="mode-dot" style="background:${MODE_HEX[leg.mode] || '#7a7260'}"></span>
           <select data-ch="leg-mode" data-leg="${legIdx}">${opts}</select>
           <input class="dur" value="${escA(leg.duration)}" data-ch="leg-dur" data-leg="${legIdx}" placeholder="duration / notes">
-          ${SHOW_COSTS ? `<span class="cost-wrap">
+          ${SHOW_COSTS ? `<span class="cost-wrap${isFB ? ' cost-wrap--fb' : ''}">
             <input class="cost" type="text" inputmode="numeric" value="${escA(isFB ? (leg.miles ?? 0) : (leg.cost ?? 0))}" data-ch="leg-cost" data-leg="${legIdx}">
             <span class="unit">${isFB ? 'mi/pp' : '$/pp'}</span></span>` : ''}
           <button class="insert" data-act="insert-stop" data-i="${insertIdx}" title="Insert a stop here" aria-label="Insert a stop here">+</button>
@@ -647,7 +672,7 @@
       };
       let out = '';
       out += `<div class="endpoint"><div class="node"></div><div class="row">
-        <input value="${escA(trip.originLabel)}" data-ch="origin-label">
+        <input value="${escA(trip.originLabel)}" data-ch="origin-label" placeholder="Flying from">
         <span class="date">${d ? '· ' + esc(fmt(d.origin)) : ''}</span></div></div>`;
       out += legHtml(trip.outboundLeg, 0, 0);
       trip.stops.forEach((stop, idx) => {
@@ -656,11 +681,12 @@
         const accomLabel = chosen ? chosen.name : 'Add accommodation';
         const accomSet = !!(chosen && chosen.name && chosen.name.trim());
         const dim = this._dragStopIdx === idx ? .38 : 1;
-        out += `<div class="stop" data-drop="stop" data-i="${idx}" style="opacity:${dim}">
+        const isNew = this._newStopIdx === idx;
+        out += `<div class="stop${isNew ? ' stop-enter' : ''}" data-drop="stop" data-i="${idx}" style="opacity:${dim}">
           <div class="dot"></div>
           <div class="card">
             <div class="head">
-              <input class="city" value="${escA(stop.city)}" data-ch="stop-city" data-i="${idx}" placeholder="Stop name">
+              <input class="city" value="${escA(stop.city)}" data-ch="stop-city" data-i="${idx}" placeholder="City">
               <button class="iti-btn" data-act="stop-iti" data-i="${idx}" title="Open day-by-day itinerary" aria-label="Open day-by-day itinerary">${svg(I.calendar)}</button>
               <div class="nights">
                 <input type="number" value="${escA(stop.nights)}" data-ch="stop-nights" data-i="${idx}">
@@ -682,17 +708,18 @@
         out += legHtml(stop.leg, idx + 1, idx + 1);
       });
       out += `<div class="endpoint"><div class="node"></div><div class="row">
-        <input value="${escA(trip.homeLabel)}" data-ch="home-label">
+        <input value="${escA(trip.homeLabel)}" data-ch="home-label" placeholder="Flying home to">
         <span class="date">${d ? '· ' + esc(fmt(d.home)) : ''}</span></div></div>`;
       return out;
     }
 
-    renderSummary(nights, grand, perPerson, miles) {
+    renderSummary(nights, grand, perPerson, miles, balance) {
+      const covered = miles > 0 && balance >= miles;
       return `<div class="summary">
         <div class="stat"><div class="fig">${nights}</div><div class="cap">nights on the ground</div></div>
         ${SHOW_COSTS ? `<div class="stat cash clickable" data-act="open-budget" title="See budget breakdown">
           <div class="fig">${esc(money(grand))}</div><div class="cap">total budget · ${esc(money(perPerson))} / person</div></div>
-        <div class="stat miles"><div class="fig">${miles.toLocaleString()}</div><div class="cap">flying blue miles needed</div></div>` : ''}
+        <div class="stat miles${covered ? ' covered' : ''}"><div class="fig">${miles.toLocaleString()}</div><div class="cap">flying blue miles needed</div></div>` : ''}
       </div>`;
     }
 
@@ -720,10 +747,10 @@
       </div>`).join('');
       return `<div class="sticker-panel">
         <div class="sticker-panel__head">
-          <span class="eyebrow" style="font-size:11px;margin-bottom:0">Photo Stickers</span>
+          <span class="eyebrow" style="font-size:11px;margin-bottom:0">Memories</span>
           <button class="modal-x" style="padding:5px 9px;font-size:14px;line-height:1" data-act="close-stickers">✕</button>
         </div>
-        <p class="sticker-panel__hint">Drag a photo onto the page to place it. Paste or drop images here too.</p>
+        <p class="sticker-panel__hint">Drop a photo anywhere on the page.</p>
         <div class="sticker-panel__strip" data-drop="sticker-zone">
           ${items}
           <div class="add-outfit" data-act="sticker-panel-add" tabindex="0" title="Click, paste, or drop to add photos">
@@ -937,7 +964,10 @@
         }
       });
       r.addEventListener('focusout', () => { r.querySelectorAll('[data-drag-restore="1"]').forEach(el => { el.setAttribute('draggable', 'true'); delete el.dataset.dragRestore; }); });
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.onEscape(); });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') this.onEscape();
+        if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
+      });
     }
     onEscape() {
       if (this.budgetOpen) { this.budgetOpen = false; this.bump(); }
@@ -952,6 +982,7 @@
       const key = t.dataset.key; const id = t.dataset.id;
       const trip = this.currentTrip();
       switch (act) {
+        case 'undo': this.undo(); break;
         case 'reset': this.resetRoute(); break;
         case 'export': this.exportState(); break;
         case 'import': this.root.querySelector('.import-file').click(); break;
