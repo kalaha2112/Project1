@@ -175,6 +175,10 @@
       // persistent map node (survives re-renders)
       this.mapEl = document.createElement('div');
       this.mapEl.className = 'map';
+      // modal container outside root so modal open/close never re-renders main content
+      this.modalEl = document.createElement('div');
+      this.modalEl.id = 'modal-root';
+      document.body.appendChild(this.modalEl);
     }
 
     /* ---------- lifecycle ---------- */
@@ -188,6 +192,19 @@
     legByIndex(i) { const t = this.currentTrip(); return i === 0 ? t.outboundLeg : t.stops[i - 1].leg; }
 
     bump() { this.render(); this.scheduleSave(); this.touchMap(); }
+    bumpModal() {
+      const trip = this.currentTrip();
+      const travelers = Math.max(1, Number(trip.travelers) || 1);
+      const d = this.computeDates(trip);
+      const fmt = (x) => this.formatDate(x);
+      const nights = trip.stops.reduce((s, st) => s + (Number(st.nights) || 0), 0);
+      const budget = this.computeBudget(trip, travelers, nights);
+      this.modalEl.innerHTML =
+        this.renderStickerPanel() +
+        this.renderItineraryModal(trip, d, fmt) +
+        this.renderAccomModal(trip, d, fmt) +
+        this.renderBudgetModal(budget, travelers, nights);
+    }
     snapshot() { this._history.push(clone(this.data)); if (this._history.length > 20) this._history.shift(); }
     undo() { if (!this._history.length) return; this.data = this._history.pop(); this.migrate(); this._lastCoordKey = ''; this.bump(); }
 
@@ -312,7 +329,7 @@
         const stopIdx = ep ? null : pi - 1;
         const marker = L.circleMarker(p.coord, {
           radius: ep ? 6 : 8, color: ep ? '#23140C' : '#91040C', weight: ep ? 2 : 0,
-          fillColor: ep ? '#ffffff' : '#91040C', fillOpacity: 1, className: changed ? 'mk-pop' : ''
+          fillColor: ep ? '#ffffff' : '#91040C', fillOpacity: 1, className: ''
         });
         const n = p.nights || 0;
         marker.bindPopup(ep ? `<b>${esc(p.label)}</b>`
@@ -382,10 +399,10 @@
     removeTodo(i) { this.snapshot(); this.data.meta.todos.splice(i, 1); this.bump(); }
 
     /* ---------- itinerary / accommodation ---------- */
-    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this.bump(); }
-    closeStop() { this.openStopIdx = null; this.bump(); }
-    openAccom(idx) { this.accomOpenIdx = idx; this.bump(); }
-    closeAccom() { this.accomOpenIdx = null; this.bump(); }
+    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this.bumpModal(); }
+    closeStop() { this.openStopIdx = null; this.bumpModal(); }
+    openAccom(idx) { this.accomOpenIdx = idx; this.bumpModal(); }
+    closeAccom() { this.accomOpenIdx = null; this.bumpModal(); }
     ensureItinerary(stop) {
       if (!Array.isArray(stop.itinerary)) stop.itinerary = [];
       const days = Math.max(1, Number(stop.nights) || 1);
@@ -593,12 +610,13 @@
           </div>
           <div class="placed-stickers-layer">${this.renderPlacedStickers()}</div>
         </div>
-        ${this.renderStickerPanel()}
-        ${this.renderItineraryModal(trip, d, fmt)}
-        ${this.renderAccomModal(trip, d, fmt)}
-        ${this.renderBudgetModal(budget, travelers, nights)}
       `;
       this.root.innerHTML = html;
+      this.modalEl.innerHTML =
+        this.renderStickerPanel() +
+        this.renderItineraryModal(trip, d, fmt) +
+        this.renderAccomModal(trip, d, fmt) +
+        this.renderBudgetModal(budget, travelers, nights);
 
       // re-attach persistent map node + saved indicator state
       const holder = this.root.querySelector('#map-holder');
@@ -607,7 +625,8 @@
 
       // focus the city input of a newly inserted stop, then clear the flag
       if (this._newStopIdx != null) {
-        const el = this.root.querySelector(`.stop-enter .city`);
+        const inputs = this.root.querySelectorAll('.stop .city');
+        const el = inputs[this._newStopIdx];
         if (el) { el.focus(); el.select(); }
         this._newStopIdx = null;
       }
@@ -681,8 +700,7 @@
         const accomLabel = chosen ? chosen.name : 'Add accommodation';
         const accomSet = !!(chosen && chosen.name && chosen.name.trim());
         const dim = this._dragStopIdx === idx ? .38 : 1;
-        const isNew = this._newStopIdx === idx;
-        out += `<div class="stop${isNew ? ' stop-enter' : ''}" data-drop="stop" data-i="${idx}" style="opacity:${dim}">
+        out += `<div class="stop" data-drop="stop" data-i="${idx}" style="opacity:${dim}">
           <div class="dot"></div>
           <div class="card">
             <div class="head">
@@ -825,7 +843,8 @@
       let dayBlock;
       if (hasDay) {
         const dayObj = stop.itinerary[activeDay] || (stop.itinerary[activeDay] = { items: [], outfits: [] });
-        const items = (dayObj.items || []).map((it, ii) => `<div class="item">
+        const itemList = dayObj.items || [];
+        const items = itemList.map((it, ii) => `<div class="item">
           <input class="time" value="${escA(it.time)}" data-ch="item-time" data-i="${ii}" placeholder="9:00">
           <div class="mid">
             <input class="text" value="${escA(it.text)}" data-ch="item-text" data-i="${ii}" placeholder="">
@@ -843,7 +862,7 @@
           <button class="add-item" data-act="add-item" title="Add to this day" aria-label="Add to this day">+</button>
         </div>`;
       } else {
-        dayBlock = `<div class="day-prompt"><p>Tap a highlighted day above to plan it.</p></div>`;
+        dayBlock = '';
       }
 
       return `<div class="overlay" data-act="overlay-iti">
@@ -855,19 +874,26 @@
                 <input class="iti-city" value="${escA(stop.city)}" data-ch="iti-city">
                 <div class="iti-sub">${range ? esc(fmt(range.start) + ' → ' + fmt(range.end)) : ''} · ${nightsN} night${nightsN === 1 ? '' : 's'}</div>
               </div>
-              <button class="modal-x" data-act="close-iti">✕</button>
-            </div>
-            <div class="cal">${cal}</div>
-            <div class="closet">
-              <div class="hd"><div class="t">Closet</div><span class="hint">add an outfit, then drag it onto any date</span></div>
-              <div class="strip">${stripCells}
-                <div class="add-outfit" data-act="closet-add" data-drop="closet-zone" tabindex="0" title="Paste, drop, or tap to add an outfit">
-                  ${svg(I.plus, { w: 16, h: 16, sw: 2.2, stroke: '#C8901F' })}<span>Add</span></div>
-                <input type="file" accept="image/*" class="closet-file" data-ch="closet-file" style="display:none">
+              <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+                <button class="tool-btn sticker-toggle-btn${this.stickerPanelOpen ? ' active' : ''}" data-act="toggle-stickers" title="Memories" aria-label="Memories">${svg(I.sticker)}</button>
+                <button class="modal-x" data-act="close-iti">✕</button>
               </div>
             </div>
           </div>
-          ${dayBlock}
+          <div class="iti-body">
+            <div class="iti-left">
+              <div class="cal">${cal}</div>
+              <div class="closet">
+                <div class="hd"><div class="t">Closet</div><span class="hint">add an outfit, then drag it onto any date</span></div>
+                <div class="strip">${stripCells}
+                  <div class="add-outfit" data-act="closet-add" data-drop="closet-zone" tabindex="0" title="Paste, drop, or tap to add an outfit">
+                    ${svg(I.plus, { w: 16, h: 16, sw: 2.2, stroke: '#C8901F' })}<span>Add</span></div>
+                  <input type="file" accept="image/*" class="closet-file" data-ch="closet-file" style="display:none">
+                </div>
+              </div>
+            </div>
+            ${hasDay ? `<div class="iti-right">${dayBlock}</div>` : ''}
+          </div>
         </div>
         ${hasDay ? `<div class="placed-stickers-layer placed-stickers-layer--modal">${this.renderPlacedStickers('iti-' + sIdx + '-day-' + activeDay)}</div>` : ''}
       </div>`;
@@ -879,7 +905,8 @@
       if (!stop.accom) stop.accom = { options: [] };
       const range = d ? d.stops[idx] : null;
       const nightsN = Math.max(1, Number(stop.nights) || 1);
-      const opts = stop.accom.options.map((o, oi) => `<div class="opt${o.chosen ? ' chosen' : ''}">
+      const accomList = stop.accom.options;
+      const opts = accomList.map((o, oi) => `<div class="opt${o.chosen ? ' chosen' : ''}">
         <div class="top">
           <button class="choose" data-act="accom-choose" data-i="${oi}" title="${o.chosen ? 'Unchose this option' : 'Choose this option'}">${o.chosen ? svg(I.check, { w: 11, h: 11, sw: 3.5, stroke: '#fff' }) : ''}</button>
           <input class="name" value="${escA(o.name)}" data-ch="accom-name" data-i="${oi}" placeholder="Place name…">
@@ -955,6 +982,15 @@
       r.addEventListener('dragend', (e) => this.onDragEnd(e));
       r.addEventListener('paste', (e) => this.onPaste(e));
       r.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+      const m = this.modalEl;
+      m.addEventListener('click', (e) => this.onClick(e));
+      m.addEventListener('change', (e) => this.onChange(e));
+      m.addEventListener('dragstart', (e) => this.onDragStart(e));
+      m.addEventListener('dragover', (e) => this.onDragOver(e));
+      m.addEventListener('drop', (e) => this.onDrop(e));
+      m.addEventListener('dragend', (e) => this.onDragEnd(e));
+      m.addEventListener('paste', (e) => this.onPaste(e));
+      m.addEventListener('pointerdown', (e) => this.onPointerDown(e));
       // focus guard: disable ancestor drag while editing a field inside it
       r.addEventListener('focusin', (e) => {
         const t = e.target;
@@ -970,7 +1006,7 @@
       });
     }
     onEscape() {
-      if (this.budgetOpen) { this.budgetOpen = false; this.bump(); }
+      if (this.budgetOpen) { this.budgetOpen = false; this.bumpModal(); }
       else if (this.accomOpenIdx != null) { this.closeAccom(); }
       else if (this.openStopIdx != null) { this.closeStop(); }
     }
@@ -997,24 +1033,24 @@
         case 'todo-toggle': { const td = this.data.meta.todos[i]; td.done = !td.done; this.bump(); break; }
         case 'todo-remove': this.removeTodo(i); break;
         case 'add-todo': this.addTodo(); break;
-        case 'open-budget': this.budgetOpen = true; this.bump(); break;
-        case 'close-budget': this.budgetOpen = false; this.bump(); break;
-        case 'overlay-budget': if (e.target === t) { this.budgetOpen = false; this.bump(); } break;
+        case 'open-budget': this.budgetOpen = true; this.bumpModal(); break;
+        case 'close-budget': this.budgetOpen = false; this.bumpModal(); break;
+        case 'overlay-budget': if (e.target === t) { this.budgetOpen = false; this.bumpModal(); } break;
         case 'close-iti': this.closeStop(); break;
         case 'overlay-iti': if (e.target === t) this.closeStop(); break;
         case 'close-accom': this.closeAccom(); break;
         case 'overlay-accom': if (e.target === t) this.closeAccom(); break;
-        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this.bump(); break; }
+        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this.bumpModal(); break; }
         case 'add-item': this.addDayItem(trip.stops[this.openStopIdx], this.activeDay); break;
         case 'item-remove': this.removeDayItem(trip.stops[this.openStopIdx], this.activeDay, i); break;
-        case 'closet-add': this.root.querySelector('.closet-file').click(); break;
+        case 'closet-add': this.modalEl.querySelector('.closet-file').click(); break;
         case 'outfit-delete': this.removeOutfitFromCloset(id); break;
         case 'accom-choose': this.chooseAccomOption(this.accomOpenIdx, i); break;
         case 'accom-remove': this.removeAccomOption(this.accomOpenIdx, i); break;
         case 'accom-add': this.addAccomOption(this.accomOpenIdx); break;
-        case 'toggle-stickers': this.stickerPanelOpen = !this.stickerPanelOpen; this.bump(); break;
-        case 'close-stickers': this.stickerPanelOpen = false; this.bump(); break;
-        case 'sticker-panel-add': this.root.querySelector('.sticker-file').click(); break;
+        case 'toggle-stickers': this.stickerPanelOpen = !this.stickerPanelOpen; this.bumpModal(); break;
+        case 'close-stickers': this.stickerPanelOpen = false; this.bumpModal(); break;
+        case 'sticker-panel-add': this.modalEl.querySelector('.sticker-file').click(); break;
         case 'stock-delete': this.removeFromStickerStock(id); break;
         case 'placed-delete': e.stopPropagation(); this.removePlacedSticker(id); break;
       }
