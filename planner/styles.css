@@ -461,6 +461,44 @@ a { color: inherit; }
   border-radius: var(--r-btn); padding: 7px 16px; cursor: pointer; margin-top: 16px;
 }
 
+/* ---- per-day focused map (inside the day column of the itinerary modal) ---- */
+.day-cols { display: flex; gap: 22px; align-items: flex-start; }
+.day-main { flex: 1; min-width: 0; }
+.day-aside { flex: 0 0 260px; position: sticky; top: 4px; display: flex; flex-direction: column; gap: 7px; }
+.daymap { height: 280px; }
+.daymap-cap { font-family: var(--sans); font-size: 10.5px; color: var(--ink-mute); line-height: 1.4; padding: 0 1px; }
+
+/* activity number badge (matches its map pin) */
+.item-num {
+  flex-shrink: 0; width: 21px; height: 21px; margin-top: 2px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1;
+  background: var(--red); color: #fff; font-variant-numeric: tabular-nums;
+}
+.item-num.placed { background: var(--red); }
+.item-num:not(.placed):not(.empty) { background: var(--gold); }   /* has address, locating */
+.item-num.empty { background: transparent; color: var(--ink-faint); border: 1px solid var(--line); }
+
+/* numbered Leaflet divIcon marker */
+.day-pin span {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--red); color: #fff; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(35,20,12,.35);
+  font-family: var(--sans); font-size: 12px; font-weight: 700; line-height: 1;
+}
+
+/* click-a-pin highlight on the matching activity row */
+.item.flash { animation: itemFlash 1.3s ease; }
+@keyframes itemFlash { 0% { background: rgba(145,4,12,.14); } 100% { background: transparent; } }
+
+/* stack the map above the activity list when the day column gets narrow */
+@media (max-width: 900px) {
+  .day-cols { flex-direction: column-reverse; }
+  .day-aside { position: static; flex-basis: auto; width: 100%; }
+  .daymap { height: 220px; }
+}
+
 /* closet strip (in itinerary header) */
 .closet { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .closet .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }

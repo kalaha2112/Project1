@@ -179,6 +179,13 @@
       this.modalEl = document.createElement('div');
       this.modalEl.id = 'modal-root';
       document.body.appendChild(this.modalEl);
+      // per-day itinerary map (second persistent Leaflet instance, lives inside the modal)
+      this.dayMapEl = document.createElement('div');
+      this.dayMapEl.className = 'map daymap';
+      this._geoCache = new Map();   // normalized address -> {lat,lng} | null (runtime only)
+      this._geoQueue = Promise.resolve();
+      this._geoLast = 0;
+      this._flashItem = null;       // item index to highlight after a pin click
     }
 
     /* ---------- lifecycle ---------- */
@@ -349,6 +356,88 @@
       this._mapMissing = missing.length ? `Couldn't place: ${missing.join(', ')} — try the nearest major city or airport code.`
         : `${bounds.length} points · route across ${trip.stops.length} stops.`;
       const note = this.root.querySelector('.map-note'); if (note) note.textContent = this._mapMissing;
+    }
+
+    /* ---------- per-day itinerary map (inside the modal) ---------- */
+    geocode(address, cityHint) {
+      const q = (address || '').trim();
+      if (!q) return Promise.resolve(null);
+      const key = normKey(q) + '|' + normKey(cityHint || '');
+      if (this._geoCache.has(key)) return Promise.resolve(this._geoCache.get(key));
+      // serialize lookups ~1.1s apart to respect the Nominatim usage policy
+      const run = this._geoQueue.then(async () => {
+        if (this._geoCache.has(key)) return this._geoCache.get(key);
+        const wait = Math.max(0, 1100 - (Date.now() - this._geoLast));
+        if (wait) await new Promise(r => setTimeout(r, wait));
+        this._geoLast = Date.now();
+        let coord = null;
+        try {
+          const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' + encodeURIComponent(cityHint ? (q + ', ' + cityHint) : q);
+          const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (res.ok) { const j = await res.json(); if (j && j[0]) coord = { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) }; }
+        } catch (e) { /* offline / blocked → leave null */ }
+        this._geoCache.set(key, coord);
+        return coord;
+      });
+      this._geoQueue = run.catch(() => {});
+      return run;
+    }
+    ensureDayMap(tries) {
+      if (!this.dayMapEl.isConnected || !window.L) { if ((tries || 0) < 80) setTimeout(() => this.ensureDayMap((tries || 0) + 1), 100); return; }
+      if (this.dayMap) { this.dayMap.invalidateSize(); this.renderDayMap(); return; }
+      const L = window.L;
+      this.dayMap = L.map(this.dayMapEl, { scrollWheelZoom: false, zoomSnap: .25, zoomDelta: .5, wheelPxPerZoomLevel: 120, inertia: true, attributionControl: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.dayMap);
+      this.dayLines = L.layerGroup().addTo(this.dayMap);
+      this.dayMarkers = L.layerGroup().addTo(this.dayMap);
+      this.dayMap.setView([48, 10], 4);
+      this.dayMapEl.addEventListener('mouseenter', () => this.dayMap.scrollWheelZoom.enable());
+      this.dayMapEl.addEventListener('mouseleave', () => this.dayMap.scrollWheelZoom.disable());
+      this.renderDayMap();
+    }
+    scheduleDayMap() { if (!this.dayMap) return; clearTimeout(this._dayMapTimer); this._dayMapTimer = setTimeout(() => { this.dayMap.invalidateSize(); this.renderDayMap(); }, 200); }
+    renderDayMap() {
+      if (!this.dayMap || !window.L) return;
+      const L = window.L;
+      const trip = this.currentTrip();
+      const stop = trip.stops[this.openStopIdx];
+      if (!stop || this.activeDay == null) return;
+      this.dayLines.clearLayers(); this.dayMarkers.clearLayers();
+      const day = (stop.itinerary || [])[this.activeDay] || { items: [] };
+      const items = day.items || [];
+      const cityCoord = this.resolveCoord(stop.city);
+      const pts = []; let placed = 0, withAddr = 0;
+      items.forEach((it, ii) => {
+        const addr = (it.address || '').trim();
+        if (!addr) return;
+        withAddr++;
+        const key = normKey(addr) + '|' + normKey(stop.city || '');
+        const coord = this._geoCache.get(key);
+        if (coord === undefined) { this.geocode(addr, stop.city).then(() => this.scheduleDayMap()); return; }
+        if (!coord) return;
+        placed++;
+        pts.push([coord.lat, coord.lng]);
+        const marker = L.marker([coord.lat, coord.lng], {
+          icon: L.divIcon({ className: 'day-pin', html: '<span>' + (ii + 1) + '</span>', iconSize: [24, 24], iconAnchor: [12, 12] })
+        });
+        marker.bindPopup('<b>' + (it.time ? esc(it.time) + ' · ' : '') + esc(it.text || ('Stop ' + (ii + 1))) + '</b><br><span style="color:#7a7260">' + esc(addr) + '</span>');
+        marker.on('click', () => { this._flashItem = ii; this.bump(); this.scrollToItem(ii); });
+        this.dayMarkers.addLayer(marker);
+      });
+      if (pts.length > 1) this.dayLines.addLayer(L.polyline(pts, { color: '#C8901F', weight: 2.5, opacity: .8, dashArray: '4 5' }));
+      if (pts.length === 1) this.dayMap.setView(pts[0], 14);
+      else if (pts.length > 1) this.dayMap.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+      else if (cityCoord) this.dayMap.setView(cityCoord, 11);
+      const cap = this.modalEl.querySelector('.daymap-cap');
+      if (cap) {
+        cap.textContent = withAddr === 0
+          ? 'Add an address to an activity to map it.'
+          : (placed < withAddr ? (placed + ' of ' + withAddr + ' placed · locating…') : (placed + ' of ' + withAddr + ' placed'));
+      }
+    }
+    scrollToItem(ii) {
+      const el = this.modalEl.querySelector('.item[data-idx="' + ii + '"]');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     /* ---------- mutators: stops / trips / todos ---------- */
@@ -621,6 +710,9 @@
       // re-attach persistent map node + saved indicator state
       const holder = this.root.querySelector('#map-holder');
       if (holder) { holder.appendChild(this.mapEl); if (this.leafletMap) this.leafletMap.invalidateSize(); }
+      // re-attach the per-day itinerary map (it lives inside the modal root)
+      const dayHolder = this.modalEl.querySelector('#day-map-holder');
+      if (dayHolder) { dayHolder.appendChild(this.dayMapEl); this.ensureDayMap(0); if (this.dayMap) this.dayMap.invalidateSize(); this.scheduleDayMap(); }
       this.paintSaved();
 
       // focus the city input of a newly inserted stop, then clear the flag
@@ -844,22 +936,37 @@
       if (hasDay) {
         const dayObj = stop.itinerary[activeDay] || (stop.itinerary[activeDay] = { items: [], outfits: [] });
         const itemList = dayObj.items || [];
-        const items = itemList.map((it, ii) => `<div class="item">
+        const flashIdx = this._flashItem; this._flashItem = null;
+        const items = itemList.map((it, ii) => {
+          const placed = !!this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''));
+          const hasAddr = /\S/.test(it.address || '');
+          return `<div class="item${ii === flashIdx ? ' flash' : ''}" data-idx="${ii}">
+          <span class="item-num${placed ? ' placed' : (hasAddr ? '' : ' empty')}" title="${placed ? 'Mapped' : hasAddr ? 'Locating…' : 'Add an address to map this'}">${ii + 1}</span>
           <input class="time" value="${escA(it.time)}" data-ch="item-time" data-i="${ii}" placeholder="9:00">
           <div class="mid">
             <input class="text" value="${escA(it.text)}" data-ch="item-text" data-i="${ii}" placeholder="">
             <div class="meta">
-              <div class="field">${svg(I.pin, { w: 11, h: 11, stroke: '#a89e8c' })}<input value="${escA(it.address)}" data-ch="item-address" data-i="${ii}" placeholder="Address">${/\S/.test(it.address || '') ? `<a class="maps" href="https://maps.google.com/?q=${encodeURIComponent(it.address || '')}" target="_blank" rel="noopener" title="Open in Maps">↗</a>` : ''}</div>
+              <div class="field">${svg(I.pin, { w: 11, h: 11, stroke: '#a89e8c' })}<input value="${escA(it.address)}" data-ch="item-address" data-i="${ii}" placeholder="Address">${hasAddr ? `<a class="maps" href="https://maps.google.com/?q=${encodeURIComponent(it.address || '')}" target="_blank" rel="noopener" title="Open in Maps">↗</a>` : ''}</div>
               <div class="field">${svg(I.msg, { w: 11, h: 11, stroke: '#a89e8c' })}<input value="${escA(it.note)}" data-ch="item-note" data-i="${ii}" placeholder="Note"></div>
               <div class="cost-field"><span class="d">$</span><input value="${escA(it.cost)}" data-ch="item-cost" data-i="${ii}" inputmode="numeric"></div>
             </div>
           </div>
           <button class="x" data-act="item-remove" data-i="${ii}" title="Remove">✕</button>
-        </div>`).join('');
+        </div>`;
+        }).join('');
+        const mapAside = SHOW_MAP ? `<aside class="day-aside">
+          <div id="day-map-holder"></div>
+          <div class="daymap-cap"></div>
+        </aside>` : '';
         dayBlock = `<div class="iti-foot">
-          <div class="day-title">Day ${activeDay + 1}${dayDate(activeDay) ? ' · ' + esc(dayDate(activeDay)) : ''}</div>
-          ${items}${(dayObj.items || []).length === 0 ? `<p class="empty-note" style="margin-top:6px">Nothing planned yet for this day.</p>` : ''}
-          <button class="add-item" data-act="add-item" title="Add to this day" aria-label="Add to this day">+</button>
+          <div class="day-cols">
+            <div class="day-main">
+              <div class="day-title">Day ${activeDay + 1}${dayDate(activeDay) ? ' · ' + esc(dayDate(activeDay)) : ''}</div>
+              ${items}${itemList.length === 0 ? `<p class="empty-note" style="margin-top:6px">Nothing planned yet for this day.</p>` : ''}
+              <button class="add-item" data-act="add-item" title="Add to this day" aria-label="Add to this day">+</button>
+            </div>
+            ${mapAside}
+          </div>
         </div>`;
       } else {
         dayBlock = '';
