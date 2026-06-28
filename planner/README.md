@@ -21,7 +21,9 @@ cd planner
 python3 -m http.server 8000   # then visit http://localhost:8000
 ```
 
-The route **map needs an internet connection** (Leaflet + OpenStreetMap tiles, loaded from CDN).
+The Leaflet library is **vendored locally** (`vendor/leaflet/`), so the maps load without a CDN.
+Only the **map tiles** need an internet connection (OpenStreetMap); offline, the route still draws
+as vector markers + lines on a blank background.
 Everything else works offline.
 
 ## Features
@@ -46,7 +48,8 @@ Everything else works offline.
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Document shell — fonts, Leaflet CDN, mounts `#app`. |
+| `index.html` | Document shell — fonts, local Leaflet, mounts `#app`. |
+| `vendor/leaflet/` | Bundled Leaflet 1.9.4 (js/css/images) — no CDN dependency. |
 | `styles.css` | Wanderbook-reskinned design tokens + all component styles. |
 | `app.js` | State, computations, rendering, and interactions (vanilla, no framework). |
 
