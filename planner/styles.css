@@ -461,6 +461,31 @@ a { color: inherit; }
   border-radius: var(--r-btn); padding: 7px 16px; cursor: pointer; margin-top: 16px;
 }
 
+/* ---- day-plan route optimizer ---- */
+.day-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.day-head .day-title { margin-bottom: 0; }
+.optimize-btn {
+  margin-left: auto; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  color: var(--gold); background: var(--gold-soft);
+  border: 1px solid var(--gold-border); border-radius: var(--r-pill);
+  padding: 6px 13px 6px 11px; cursor: pointer; transition: background .15s, box-shadow .15s;
+}
+.optimize-btn:hover:not(:disabled) { background: var(--gold-hover); box-shadow: 0 2px 8px rgba(35,20,12,.1); }
+.optimize-btn:disabled { opacity: .45; cursor: not-allowed; }
+.optimize-btn svg { fill: currentColor; stroke: none; }
+
+.optimize-note {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--green-bg); border: 1px solid color-mix(in oklch, var(--green) 24%, transparent);
+  border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 14px;
+  font-family: var(--sans); font-size: 12px; line-height: 1.45; color: var(--ink-mid);
+}
+.optimize-note.warn { background: var(--gold-soft); border-color: var(--gold-border); }
+.optimize-note span { flex: 1; min-width: 0; }
+.optimize-note .on-x { flex-shrink: 0; border: none; background: transparent; color: var(--ink-mute); cursor: pointer; font-size: 12px; line-height: 1; padding: 2px; }
+
 /* ---- per-day focused map (inside the day column of the itinerary modal) ---- */
 .day-cols { display: flex; gap: 22px; align-items: flex-start; }
 .day-main { flex: 1; min-width: 0; }

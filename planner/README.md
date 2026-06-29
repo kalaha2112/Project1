@@ -36,6 +36,10 @@ Everything else works offline.
 - **Itinerary modal** — month calendar of the stay; per-day timed activity items (time, text,
   address → Google Maps, note, cost); an **outfit "closet"** (add by click / paste / drop, with a
   canvas background-knockout) whose stickers drag onto calendar days.
+- **Optimize route** — a one-click optimizer reorders the selected day's activities to remove
+  backtracking, using each activity's geocoded address (nearest-neighbour + 2-opt over the pins).
+  It keeps the schedule chronological (reassigns existing times in order), reports how much shorter
+  the walking route is, and is undoable (⌘/Ctrl-Z). Runs entirely in-browser — no API key.
 - **Accommodation modal** — compare lodging options per stop (name, link, price, distance,
   features); mark one as chosen (feeds the lodging budget).
 - **Budget modal** — flights, intercity transport, city transit (researched local-currency day

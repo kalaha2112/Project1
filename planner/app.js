@@ -135,6 +135,7 @@
     check: '<path d="M20 6L9 17l-5-5"/>',
     grip: '<circle cx="3.5" cy="3" r="1.5"/><circle cx="8.5" cy="3" r="1.5"/><circle cx="3.5" cy="8" r="1.5"/><circle cx="8.5" cy="8" r="1.5"/><circle cx="3.5" cy="13" r="1.5"/><circle cx="8.5" cy="13" r="1.5"/>',
     plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    spark: '<path d="M12 3l1.6 5.1L19 9.7l-4.4 2.9L16 18l-4-3.2L8 18l1.4-5.4L5 9.7l5.4-.6z"/>',
     sticker: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'
   };
   const svg = (paths, opt = {}) => {
@@ -186,6 +187,7 @@
       this._geoQueue = Promise.resolve();
       this._geoLast = 0;
       this._flashItem = null;       // item index to highlight after a pin click
+      this._optimizeNote = null;    // result banner from the route optimizer
     }
 
     /* ---------- lifecycle ---------- */
@@ -450,6 +452,83 @@
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
+    /* ---------- day-plan route optimizer (avoid backtracking) ---------- */
+    haversine(a, b) {
+      const R = 6371, toR = Math.PI / 180;
+      const dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+      const la1 = a.lat * toR, la2 = b.lat * toR;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+    }
+    parseTimeMin(s) {
+      const m = String(s || '').match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+      if (!m) return Infinity;
+      let h = Number(m[1]); const min = Number(m[2] || 0); const ap = (m[3] || '').toLowerCase();
+      if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+      return h * 60 + min;
+    }
+    pathLen(order) { let d = 0; for (let i = 0; i < order.length - 1; i++) d += this.haversine(order[i], order[i + 1]); return d; }
+    optimizeDay() {
+      const stop = this.currentTrip().stops[this.openStopIdx];
+      if (!stop || this.activeDay == null) return;
+      const day = stop.itinerary[this.activeDay] || { items: [] };
+      const items = day.items || [];
+      // split into geocoded (placeable) and the rest (kept in original order, appended)
+      const placed = [], unplaced = [];
+      items.forEach((it, idx) => {
+        const coord = this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''));
+        if (coord) placed.push({ it, idx, lat: coord.lat, lng: coord.lng });
+        else unplaced.push({ it, idx });
+      });
+      if (placed.length < 2) { this._optimizeNote = { kind: 'warn', text: 'Add an address to at least two activities so they can be placed on the map, then optimize.' }; this.bumpModal(); return; }
+
+      const before = this.pathLen(placed);
+      // open-path TSP: nearest-neighbour from each start + 2-opt, keep the shortest
+      const nn = (start) => {
+        const used = new Array(placed.length).fill(false);
+        const route = [placed[start]]; used[start] = true;
+        for (let k = 1; k < placed.length; k++) {
+          let last = route[route.length - 1], best = -1, bd = Infinity;
+          for (let j = 0; j < placed.length; j++) { if (!used[j]) { const d = this.haversine(last, placed[j]); if (d < bd) { bd = d; best = j; } } }
+          route.push(placed[best]); used[best] = true;
+        }
+        return route;
+      };
+      const twoOpt = (route) => {
+        let improved = true;
+        while (improved) {
+          improved = false;
+          for (let i = 0; i < route.length - 1; i++) {
+            for (let k = i + 1; k < route.length; k++) {
+              const cand = route.slice(0, i).concat(route.slice(i, k + 1).reverse(), route.slice(k + 1));
+              if (this.pathLen(cand) + 1e-9 < this.pathLen(route)) { route = cand; improved = true; }
+            }
+          }
+        }
+        return route;
+      };
+      let best = null, bestLen = Infinity;
+      for (let s = 0; s < placed.length; s++) {
+        const r = twoOpt(nn(s));
+        const len = this.pathLen(r);
+        if (len < bestLen) { bestLen = len; best = r; }
+      }
+
+      // keep schedule chronological: reassign the existing time strings in sorted order
+      const newItems = best.map(p => p.it).concat(unplaced.map(u => u.it));
+      const times = items.map(it => it.time).filter(t => /\S/.test(t || '')).sort((a, b) => this.parseTimeMin(a) - this.parseTimeMin(b));
+      newItems.forEach((it, i) => { it.time = i < times.length ? times[i] : ''; });
+
+      const same = newItems.every((it, i) => it === items[i]);
+      const savedPct = before > 0 ? Math.round((1 - bestLen / before) * 100) : 0;
+      this.snapshot();
+      day.items = newItems;
+      this._optimizeNote = same
+        ? { kind: 'ok', text: `Already backtrack-free — your ${placed.length} mapped stops were in an efficient order.` }
+        : { kind: 'ok', text: `Reordered ${placed.length} stops to cut backtracking — walking route ${savedPct > 0 ? savedPct + '% shorter' : 'tightened'} (${before.toFixed(1)} → ${bestLen.toFixed(1)} km). Times kept in order. Undo with ⌘/Ctrl-Z.` };
+      this.bump();
+    }
+
     /* ---------- mutators: stops / trips / todos ---------- */
     insertStop(idx) {
       this.currentTrip().stops.splice(idx, 0, { city: '', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } });
@@ -498,7 +577,7 @@
     removeTodo(i) { this.snapshot(); this.data.meta.todos.splice(i, 1); this.bump(); }
 
     /* ---------- itinerary / accommodation ---------- */
-    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this.bumpModal(); }
+    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this._optimizeNote = null; this.bumpModal(); }
     closeStop() { this.openStopIdx = null; this.bumpModal(); }
     openAccom(idx) { this.accomOpenIdx = idx; this.bumpModal(); }
     closeAccom() { this.accomOpenIdx = null; this.bumpModal(); }
@@ -946,6 +1025,7 @@
         const dayObj = stop.itinerary[activeDay] || (stop.itinerary[activeDay] = { items: [], outfits: [] });
         const itemList = dayObj.items || [];
         const flashIdx = this._flashItem; this._flashItem = null;
+        const placedCount = itemList.filter(it => this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''))).length;
         const items = itemList.map((it, ii) => {
           const placed = !!this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''));
           const hasAddr = /\S/.test(it.address || '');
@@ -967,10 +1047,15 @@
           <div id="day-map-holder"></div>
           <div class="daymap-cap"></div>
         </aside>` : '';
+        const note = this._optimizeNote;
         dayBlock = `<div class="iti-foot">
           <div class="day-cols">
             <div class="day-main">
-              <div class="day-title">Day ${activeDay + 1}${dayDate(activeDay) ? ' · ' + esc(dayDate(activeDay)) : ''}</div>
+              <div class="day-head">
+                <div class="day-title">Day ${activeDay + 1}${dayDate(activeDay) ? ' · ' + esc(dayDate(activeDay)) : ''}</div>
+                <button class="optimize-btn" data-act="optimize-day" ${placedCount < 2 ? 'disabled' : ''} title="${placedCount < 2 ? 'Add an address to at least 2 activities first' : 'Reorder the day to avoid backtracking'}">${svg(I.spark, { w: 13, h: 13, sw: 1.6 })}<span>Optimize route</span></button>
+              </div>
+              ${note ? `<div class="optimize-note${note.kind === 'warn' ? ' warn' : ''}"><span>${esc(note.text)}</span><button class="on-x" data-act="optimize-dismiss" title="Dismiss">✕</button></div>` : ''}
               ${items}${itemList.length === 0 ? `<p class="empty-note" style="margin-top:6px">Nothing planned yet for this day.</p>` : ''}
               <button class="add-item" data-act="add-item" title="Add to this day" aria-label="Add to this day">+</button>
             </div>
@@ -1156,7 +1241,9 @@
         case 'overlay-iti': if (e.target === t) this.closeStop(); break;
         case 'close-accom': this.closeAccom(); break;
         case 'overlay-accom': if (e.target === t) this.closeAccom(); break;
-        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this.bumpModal(); break; }
+        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this._optimizeNote = null; this.bumpModal(); break; }
+        case 'optimize-day': this.optimizeDay(); break;
+        case 'optimize-dismiss': this._optimizeNote = null; this.bumpModal(); break;
         case 'add-item': this.addDayItem(trip.stops[this.openStopIdx], this.activeDay); break;
         case 'item-remove': this.removeDayItem(trip.stops[this.openStopIdx], this.activeDay, i); break;
         case 'closet-add': this.modalEl.querySelector('.closet-file').click(); break;
