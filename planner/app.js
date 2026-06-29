@@ -1505,7 +1505,9 @@
     /* ---- pointer-based stop reordering (touch-friendly) ---- */
     _startStopDrag(e, grip) {
       const stopEl = grip.closest('.stop');
-      this._stopDrag = { fromIdx: Number(grip.dataset.gripStop), pointerId: e.pointerId, startY: e.clientY, moved: false, targetIdx: null };
+      // snapshot original card midpoints so targeting stays stable while the dragged card is transformed
+      const mids = this._stopEls().map(s => { const r = s.getBoundingClientRect(); return r.top + r.height / 2; });
+      this._stopDrag = { fromIdx: Number(grip.dataset.gripStop), pointerId: e.pointerId, startY: e.clientY, moved: false, targetIdx: null, stopEl, lastIns: -1, mids };
       try { grip.setPointerCapture(e.pointerId); } catch (_) {}
       if (stopEl) stopEl.classList.add('dragging');
       this._onSPM = (ev) => this._doStopDrag(ev);
@@ -1516,18 +1518,26 @@
     }
     _stopEls() { return [...this.root.querySelectorAll('.route .stop')]; }
     _dropIndexAt(y) {
-      const els = this._stopEls();
-      for (let i = 0; i < els.length; i++) { const r = els[i].getBoundingClientRect(); if (y < r.top + r.height / 2) return i; }
-      return els.length;
+      const mids = this._stopDrag && this._stopDrag.mids;
+      if (!mids) return 0;
+      let ins = 0;
+      for (let i = 0; i < mids.length; i++) { if (y > mids[i]) ins = i + 1; }
+      return ins;
     }
     _doStopDrag(e) {
       const d = this._stopDrag; if (!d) return;
       if (e.cancelable) e.preventDefault();
-      if (Math.abs(e.clientY - d.startY) > 4) d.moved = true;
+      const dy = e.clientY - d.startY;
+      if (Math.abs(dy) > 4) d.moved = true;
+      // the picked-up card follows the finger 1:1 (smooth)
+      if (d.stopEl) d.stopEl.style.transform = `translateY(${dy}px)`;
       const ins = this._dropIndexAt(e.clientY);
       d.targetIdx = ins;
-      const els = this._stopEls();
-      els.forEach((s, i) => { s.classList.toggle('drop-before', d.moved && i === ins); s.classList.toggle('drop-after', d.moved && ins === els.length && i === els.length - 1); });
+      if (d.moved && ins !== d.lastIns) {
+        d.lastIns = ins;
+        const els = this._stopEls();
+        els.forEach((s, i) => { s.classList.toggle('drop-before', i === ins); s.classList.toggle('drop-after', ins === els.length && i === els.length - 1); });
+      }
     }
     _endStopDrag() {
       const d = this._stopDrag; if (!d) return;
