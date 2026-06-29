@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-06-29T07:23:27.429Z
+  Built: 2026-06-29T07:25:11.243Z
 -->
 
 <html lang="en">
@@ -993,13 +993,13 @@ a { color: inherit; }
 .stop .foot { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
 .grip {
   display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 30px; cursor: grab; color: var(--ink-soft); flex-shrink: 0;
-  margin: -3px 0 -3px -8px;            /* bigger touch target, minimal added card height */
-  border-radius: var(--r-xs); touch-action: none;
-  background: var(--line-2); border: 1px solid var(--line);
+  width: 34px; height: 26px; cursor: grab; color: var(--ink-faint); flex-shrink: 0;
+  margin: -3px 0 -3px -8px;            /* keeps a usable touch target, minimal added card height */
+  touch-action: none; opacity: .7;     /* quiet, matching the trash icon */
 }
-.grip:active { cursor: grabbing; background: var(--line); }
-.grip svg { width: 16px; height: 20px; }
+.grip:hover { opacity: 1; color: var(--ink-soft); }
+.grip:active { cursor: grabbing; }
+.grip svg { width: 12px; height: 15px; }
 /* pointer-drag reorder feedback */
 .stop.dragging { z-index: 6; opacity: .97; will-change: transform; transform: translateZ(0); }
 .stop.dragging > .card { box-shadow: 0 5px 14px rgba(33,26,24,.16); border-color: var(--red); }
