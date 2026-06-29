@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-06-29T06:57:14.019Z
+  Built: 2026-06-29T07:01:57.636Z
 -->
 
 <html lang="en">
@@ -990,9 +990,16 @@ a { color: inherit; }
 .accom-btn:hover { background: #faf8f4; }
 .accom-btn .lbl { flex: 1; min-width: 0; font-family: var(--sans); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .accom-btn .chev { flex-shrink: 0; font-family: var(--sans); font-size: 11px; color: var(--ink-faint); font-weight: 700; }
-.stop .foot { display: flex; align-items: center; gap: 4px; margin-top: 1px; }
-.grip { display: flex; align-items: center; justify-content: center; width: 18px; height: 16px; cursor: grab; color: var(--ink-faint); flex-shrink: 0; opacity: .7; }
-.grip svg { width: 10px; height: 13px; }
+.stop .foot { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.grip {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 30px; cursor: grab; color: var(--ink-soft); flex-shrink: 0;
+  margin: -3px 0 -3px -8px;            /* bigger touch target, minimal added card height */
+  border-radius: var(--r-xs); touch-action: none;
+  background: var(--line-2); border: 1px solid var(--line);
+}
+.grip:active { cursor: grabbing; background: var(--line); }
+.grip svg { width: 16px; height: 20px; }
 .trash {
   display: flex; align-items: center; justify-content: center; width: 18px; height: 16px;
   color: var(--ink-faint); border: none; background: transparent; cursor: pointer;
