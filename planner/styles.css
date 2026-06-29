@@ -491,31 +491,51 @@ a { color: inherit; }
 .day-main { flex: 1; min-width: 0; }
 .day-aside { flex: 0 0 260px; position: sticky; top: 4px; display: flex; flex-direction: column; gap: 7px; }
 .daymap { height: 280px; }
+/* CartoDB Positron tiles are already minimal — no extra filter needed */
+.daymap.map .leaflet-tile-pane { filter: none; }
 .daymap-cap { font-family: var(--sans); font-size: 10.5px; color: var(--ink-mute); line-height: 1.4; padding: 0 1px; }
 
 /* activity number badge (matches its map pin) */
 .item-num {
-  flex-shrink: 0; width: 21px; height: 21px; margin-top: 2px;
+  flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px;
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1;
-  background: var(--red); color: #fff; font-variant-numeric: tabular-nums;
+  color: #fff; font-variant-numeric: tabular-nums;
+  background: var(--red);
 }
 .item-num.placed { background: var(--red); }
-.item-num:not(.placed):not(.empty) { background: var(--gold); }   /* has address, locating */
-.item-num.empty { background: transparent; color: var(--ink-faint); border: 1px solid var(--line); }
+.item-num:not(.placed):not(.empty) { background: var(--ink-faint); }  /* has address, locating */
+.item-num.empty { background: transparent; color: var(--ink-faint); border: 1.5px solid var(--line); }
 
-/* numbered Leaflet divIcon marker */
+.map-stop-dot { cursor: pointer; }
+
+/* numbered Leaflet divIcon pin — teardrop shape */
+.day-pin {
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 2px 6px rgba(145,4,12,.30));
+}
 .day-pin span {
   display: flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 50%;
-  background: var(--red); color: #fff; border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(35,20,12,.35);
-  font-family: var(--sans); font-size: 12px; font-weight: 700; line-height: 1;
+  width: 28px; height: 28px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--red); color: #fff;
+  font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1;
+}
+.day-pin span::after {
+  content: attr(data-n);
+  transform: rotate(45deg);
+  display: block;
 }
 
 /* click-a-pin highlight on the matching activity row */
+.item.selected { background: rgba(145,4,12,.07); border-radius: 6px; outline: 1.5px solid rgba(145,4,12,.22); }
 .item.flash { animation: itemFlash 1.3s ease; }
 @keyframes itemFlash { 0% { background: rgba(145,4,12,.14); } 100% { background: transparent; } }
+
+/* active (selected) pin — slightly larger + white border ring */
+.day-pin.active { filter: drop-shadow(0 2px 8px rgba(145,4,12,.55)); }
+.day-pin.active span { width: 32px; height: 32px; outline: 2.5px solid #fff; outline-offset: 1px; }
 
 /* stack the map above the activity list when the day column gets narrow */
 @media (max-width: 900px) {

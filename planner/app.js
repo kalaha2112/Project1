@@ -173,7 +173,7 @@
       this._dragCellImg = null;
       this._onPM = null;
       this._onPU = null;
-      // persistent map node (survives re-renders)
+      // persistent aside map node (survives re-renders)
       this.mapEl = document.createElement('div');
       this.mapEl.className = 'map';
       // modal container outside root so modal open/close never re-renders main content
@@ -186,7 +186,8 @@
       this._geoCache = new Map();   // normalized address -> {lat,lng} | null (runtime only)
       this._geoQueue = Promise.resolve();
       this._geoLast = 0;
-      this._flashItem = null;       // item index to highlight after a pin click
+      this._flashItem = null;       // item index to flash once after a pin click
+      this._selectedItem = null;    // item index persistently highlighted by pin toggle
       this._optimizeNote = null;    // result banner from the route optimizer
     }
 
@@ -291,7 +292,17 @@
       return { origin: dep, stops: stopRanges, home: cursor };
     }
 
-    /* ---------- map ---------- */
+    /* ---------- SVG route map (aside) ---------- */
+    resolveCoord(label) {
+      if (!label) return null;
+      const base = normKey(label.replace(/\(.*?\)/g, '').trim());
+      if (CITY_COORDS[base]) return CITY_COORDS[base];
+      const m = label.match(/\(([^)]+)\)/);
+      if (m) { const code = normKey(m[1]); if (CITY_COORDS[code]) return CITY_COORDS[code]; }
+      const fw = base.split(/[, ]+/)[0];
+      if (fw && CITY_COORDS[fw]) return CITY_COORDS[fw];
+      return null;
+    }
     ensureMap(tries) {
       if (!this.mapEl.isConnected || !window.L) { if (tries < 80) setTimeout(() => this.ensureMap(tries + 1), 100); return; }
       if (this.leafletMap) return;
@@ -303,26 +314,12 @@
       this.leafletMap.setView([54, 10], 4);
       this.mapEl.addEventListener('mouseenter', () => this.leafletMap.scrollWheelZoom.enable());
       this.mapEl.addEventListener('mouseleave', () => this.leafletMap.scrollWheelZoom.disable());
-      this.leafletMap.on('popupopen', (e) => {
-        const link = e.popup.getElement() && e.popup.getElement().querySelector('[data-open-stop]');
-        if (link) link.addEventListener('click', () => { this.openStop(parseInt(link.getAttribute('data-open-stop'))); this.leafletMap.closePopup(); });
-      });
       this.renderMap();
     }
     touchMap() {
       if (!this.leafletMap) return;
       clearTimeout(this._mapTimer);
       this._mapTimer = setTimeout(() => { this.leafletMap.invalidateSize(); this.renderMap(); }, 220);
-    }
-    resolveCoord(label) {
-      if (!label) return null;
-      const base = normKey(label.replace(/\(.*?\)/g, '').trim());
-      if (CITY_COORDS[base]) return CITY_COORDS[base];
-      const m = label.match(/\(([^)]+)\)/);
-      if (m) { const code = normKey(m[1]); if (CITY_COORDS[code]) return CITY_COORDS[code]; }
-      const fw = base.split(/[, ]+/)[0];
-      if (fw && CITY_COORDS[fw]) return CITY_COORDS[fw];
-      return null;
     }
     renderMap() {
       if (!this.leafletMap || !window.L) return;
@@ -345,11 +342,9 @@
         const stopIdx = ep ? null : pi - 1;
         const marker = L.circleMarker(p.coord, {
           radius: ep ? 6 : 8, color: ep ? '#23140C' : '#91040C', weight: ep ? 2 : 0,
-          fillColor: ep ? '#ffffff' : '#91040C', fillOpacity: 1, className: ''
+          fillColor: ep ? '#ffffff' : '#91040C', fillOpacity: 1,
+          className: ep ? '' : 'map-stop-dot'
         });
-        const n = p.nights || 0;
-        marker.bindPopup(ep ? `<b>${esc(p.label)}</b>`
-          : `<b style="font-size:13px">${esc(p.label)}</b><br><span style="color:#91040C">${n} night${n === 1 ? '' : 's'}</span>${p.note ? '<br><span style="color:#7a7260">' + esc(p.note) + '</span>' : ''}<br><span style="color:#C8901F;cursor:pointer;font-weight:600;font-size:11px" data-open-stop="${stopIdx}">Open itinerary →</span>`);
         if (!ep && stopIdx != null) marker.on('click', () => this.openStop(stopIdx));
         this.mapMarkers.addLayer(marker);
       });
@@ -396,7 +391,7 @@
       if (this.dayMap) { this.dayMap.invalidateSize(); this.renderDayMap(); return; }
       const L = window.L;
       this.dayMap = L.map(this.dayMapEl, { scrollWheelZoom: false, zoomSnap: .25, zoomDelta: .5, wheelPxPerZoomLevel: 120, inertia: true, attributionControl: false });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.dayMap);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, detectRetina: true }).addTo(this.dayMap);
       this.dayLines = L.layerGroup().addTo(this.dayMap);
       this.dayMarkers = L.layerGroup().addTo(this.dayMap);
       this.dayMap.setView([48, 10], 4);
@@ -407,7 +402,37 @@
       requestAnimationFrame(() => { if (this.dayMap) this.dayMap.invalidateSize(); });
       setTimeout(() => { if (this.dayMap) { this.dayMap.invalidateSize(); this.renderDayMap(); } }, 360);
     }
-    scheduleDayMap() { if (!this.dayMap) return; clearTimeout(this._dayMapTimer); this._dayMapTimer = setTimeout(() => { this.dayMap.invalidateSize(); this.renderDayMap(); }, 200); }
+    countPlaced(stop, items) {
+      return (items || []).filter(it => {
+        const q = (it.address || '').trim() || (it.text || '').trim();
+        if (!q) return false;
+        const cityHint = q.includes(',') ? '' : (stop.city || '');
+        if (this._geoCache.get(normKey(q) + '|' + normKey(cityHint))) return true;
+        const parts = q.split(',').map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 3 && !/\d/.test(parts[0])) {
+          if (this._geoCache.get(normKey(parts.slice(1).join(', ')) + '|')) return true;
+        }
+        return false;
+      }).length;
+    }
+    scheduleDayMap() {
+      if (!this.dayMap) return;
+      clearTimeout(this._dayMapTimer);
+      this._dayMapTimer = setTimeout(() => {
+        this.dayMap.invalidateSize();
+        this.renderDayMap();
+        // patch optimize button disabled state — renderDayMap runs async after geocoding,
+        // so the button HTML rendered at modal-open time is stale
+        const btn = this.modalEl.querySelector('.optimize-btn');
+        if (btn && this.openStopIdx != null && this.activeDay != null) {
+          const stop = this.currentTrip().stops[this.openStopIdx];
+          const day = stop && (stop.itinerary || [])[this.activeDay];
+          const n = this.countPlaced(stop, day && day.items);
+          btn.disabled = n < 2;
+          btn.title = n < 2 ? 'Add an address to at least 2 activities first' : 'Reorder the day to avoid backtracking';
+        }
+      }, 200);
+    }
     renderDayMap() {
       if (!this.dayMap || !window.L) return;
       const L = window.L;
@@ -418,33 +443,85 @@
       const day = (stop.itinerary || [])[this.activeDay] || { items: [] };
       const items = day.items || [];
       const cityCoord = this.resolveCoord(stop.city);
-      const pts = []; let placed = 0, withAddr = 0;
+      // Strip a leading business/venue name from a Google Maps address string.
+      // e.g. "Souvenir and Coffee, Budapest, Kristóf tér 3, 1052 Hungary"
+      //   → "Budapest, Kristóf tér 3, 1052 Hungary"
+      // Heuristic: first segment has no digits AND at least one later segment does.
+      const stripVenueName = (a) => {
+        const parts = a.split(',').map(s => s.trim()).filter(Boolean);
+        if (parts.length < 3 || /\d/.test(parts[0])) return null;
+        if (!parts.slice(1).some(p => /\d/.test(p))) return null;
+        return parts.slice(1).join(', ');
+      };
+
+      // Try geocoding with automatic fallback chain, returning the best coord found.
+      // Returns { coord, pending: true } or { coord: null/obj, pending: false }.
+      const resolve = (addr, cityHint) => {
+        const key = normKey(addr) + '|' + normKey(cityHint);
+        if (!this._geoCache.has(key)) {
+          this.geocode(addr, cityHint).then(() => this.scheduleDayMap());
+          return { coord: null, pending: true };
+        }
+        return { coord: this._geoCache.get(key), pending: false };
+      };
+
+      const pts = []; let placed = 0, withAddr = 0, pending = 0, notFound = 0;
       items.forEach((it, ii) => {
-        const addr = (it.address || '').trim();
+        // use explicit address if set, otherwise fall back to the activity text as a place name
+        const addr = (it.address || '').trim() || (it.text || '').trim();
         if (!addr) return;
         withAddr++;
-        const key = normKey(addr) + '|' + normKey(stop.city || '');
-        const coord = this._geoCache.get(key);
-        if (coord === undefined) { this.geocode(addr, stop.city).then(() => this.scheduleDayMap()); return; }
-        if (!coord) return;
+        // Full formatted addresses (commas) already contain location; don't append city.
+        // Short landmark names benefit from city hint for disambiguation.
+        const cityHint = addr.includes(',') ? '' : (stop.city || '');
+
+        let r = resolve(addr, cityHint);
+        if (r.pending) { pending++; return; }
+        let coord = r.coord;
+
+        if (!coord) {
+          // Try stripping a leading venue/business name (Google Maps pastes include it)
+          const stripped = stripVenueName(addr);
+          if (stripped) {
+            r = resolve(stripped, '');
+            if (r.pending) { pending++; return; }
+            coord = r.coord;
+          }
+        }
+
+        if (!coord && cityHint) {
+          // Short name with city hint returned nothing — try without city hint
+          r = resolve(addr, '');
+          if (r.pending) { pending++; return; }
+          coord = r.coord;
+        }
+
+        if (!coord) { notFound++; return; }
         placed++;
         pts.push([coord.lat, coord.lng]);
+        const label = it.text || addr;
         const marker = L.marker([coord.lat, coord.lng], {
-          icon: L.divIcon({ className: 'day-pin', html: '<span>' + (ii + 1) + '</span>', iconSize: [24, 24], iconAnchor: [12, 12] })
+          icon: L.divIcon({ className: 'day-pin' + (ii === this._selectedItem ? ' active' : ''), html: '<span data-n="' + (ii + 1) + '"></span>', iconSize: [28, 28], iconAnchor: [8, 28] })
         });
-        marker.bindPopup('<b>' + (it.time ? esc(it.time) + ' · ' : '') + esc(it.text || ('Stop ' + (ii + 1))) + '</b><br><span style="color:#7a7260">' + esc(addr) + '</span>');
-        marker.on('click', () => { this._flashItem = ii; this.bump(); this.scrollToItem(ii); });
+        marker.on('click', () => {
+          const wasSelected = this._selectedItem === ii;
+          this._selectedItem = wasSelected ? null : ii;
+          this._flashItem = null;
+          this.bumpModal();
+          if (!wasSelected) this.scrollToItem(ii);
+        });
         this.dayMarkers.addLayer(marker);
       });
-      if (pts.length > 1) this.dayLines.addLayer(L.polyline(pts, { color: '#C8901F', weight: 2.5, opacity: .8, dashArray: '4 5' }));
+      if (pts.length > 1) this.dayLines.addLayer(L.polyline(pts, { color: '#91040C', weight: 1.5, opacity: .28, dashArray: '5 6' }));
       if (pts.length === 1) this.dayMap.setView(pts[0], 14);
       else if (pts.length > 1) this.dayMap.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
       else if (cityCoord) this.dayMap.setView(cityCoord, 11);
       const cap = this.modalEl.querySelector('.daymap-cap');
       if (cap) {
-        cap.textContent = withAddr === 0
-          ? 'Add an address to an activity to map it.'
-          : (placed < withAddr ? (placed + ' of ' + withAddr + ' placed · locating…') : (placed + ' of ' + withAddr + ' placed'));
+        if (withAddr === 0) cap.textContent = 'Add a place name or address to any activity to map it.';
+        else if (pending > 0) cap.textContent = placed + ' of ' + withAddr + ' placed · locating' + (notFound ? ', ' + notFound + ' not found' : '') + '…';
+        else if (placed === 0 && notFound > 0) cap.textContent = 'Could not locate ' + notFound + ' address' + (notFound > 1 ? 'es' : '') + ' — try a full street address or landmark name.';
+        else cap.textContent = placed + ' of ' + withAddr + ' placed' + (notFound ? ' · ' + notFound + ' not found' : '');
       }
     }
     scrollToItem(ii) {
@@ -476,21 +553,55 @@
       // split into geocoded (placeable) and the rest (kept in original order, appended)
       const placed = [], unplaced = [];
       items.forEach((it, idx) => {
-        const coord = this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''));
+        const q = (it.address || '').trim() || (it.text || '').trim();
+        const cityHint = q.includes(',') ? '' : (stop.city || '');
+        let coord = this._geoCache.get(normKey(q) + '|' + normKey(cityHint));
+        if (!coord) {
+          const parts = q.split(',').map(s => s.trim()).filter(Boolean);
+          if (parts.length >= 3 && !/\d/.test(parts[0])) coord = this._geoCache.get(normKey(parts.slice(1).join(', ')) + '|');
+        }
         if (coord) placed.push({ it, idx, lat: coord.lat, lng: coord.lng });
         else unplaced.push({ it, idx });
       });
       if (placed.length < 2) { this._optimizeNote = { kind: 'warn', text: 'Add an address to at least two activities so they can be placed on the map, then optimize.' }; this.bumpModal(); return; }
 
-      const before = this.pathLen(placed);
-      // open-path TSP: nearest-neighbour from each start + 2-opt, keep the shortest
-      const nn = (start) => {
+      // Resolve the hotel as the fixed route origin
+      const chosen = (stop.accom && stop.accom.options || []).find(o => o.chosen);
+      let origin = null;
+      if (chosen && chosen.name && chosen.name.trim()) {
+        const hq = chosen.name.trim();
+        const hKey = normKey(hq) + '|' + normKey(stop.city || '');
+        if (!this._geoCache.has(hKey)) {
+          // hotel not geocoded yet — trigger it and ask user to retry
+          this.geocode(hq, stop.city).then(() => this.scheduleDayMap());
+          this._optimizeNote = { kind: 'warn', text: 'Locating your hotel — try Optimize again in a moment.' };
+          this.bumpModal(); return;
+        }
+        origin = this._geoCache.get(hKey) || null;
+      }
+      // fall back to city-center coordinates
+      if (!origin) {
+        const cc = this.resolveCoord(stop.city);
+        if (cc) origin = { lat: cc[0], lng: cc[1] };
+      }
+
+      const totalLen = (route) => {
+        const start = origin || route[0];
+        return this.haversine(start, route[0]) + this.pathLen(route);
+      };
+
+      const before = totalLen(placed);
+
+      // NN from fixed origin → 2-opt keeping origin fixed
+      const nnFromOrigin = () => {
         const used = new Array(placed.length).fill(false);
-        const route = [placed[start]]; used[start] = true;
-        for (let k = 1; k < placed.length; k++) {
-          let last = route[route.length - 1], best = -1, bd = Infinity;
-          for (let j = 0; j < placed.length; j++) { if (!used[j]) { const d = this.haversine(last, placed[j]); if (d < bd) { bd = d; best = j; } } }
-          route.push(placed[best]); used[best] = true;
+        const route = []; let cur = origin || placed[0];
+        for (let k = 0; k < placed.length; k++) {
+          let bi = -1, bd = Infinity;
+          for (let j = 0; j < placed.length; j++) {
+            if (!used[j]) { const d = this.haversine(cur, placed[j]); if (d < bd) { bd = d; bi = j; } }
+          }
+          route.push(placed[bi]); used[bi] = true; cur = placed[bi];
         }
         return route;
       };
@@ -501,18 +612,14 @@
           for (let i = 0; i < route.length - 1; i++) {
             for (let k = i + 1; k < route.length; k++) {
               const cand = route.slice(0, i).concat(route.slice(i, k + 1).reverse(), route.slice(k + 1));
-              if (this.pathLen(cand) + 1e-9 < this.pathLen(route)) { route = cand; improved = true; }
+              if (totalLen(cand) + 1e-9 < totalLen(route)) { route = cand; improved = true; }
             }
           }
         }
         return route;
       };
-      let best = null, bestLen = Infinity;
-      for (let s = 0; s < placed.length; s++) {
-        const r = twoOpt(nn(s));
-        const len = this.pathLen(r);
-        if (len < bestLen) { bestLen = len; best = r; }
-      }
+      const best = twoOpt(nnFromOrigin());
+      const bestLen = totalLen(best);
 
       // keep schedule chronological: reassign the existing time strings in sorted order
       const newItems = best.map(p => p.it).concat(unplaced.map(u => u.it));
@@ -523,9 +630,11 @@
       const savedPct = before > 0 ? Math.round((1 - bestLen / before) * 100) : 0;
       this.snapshot();
       day.items = newItems;
+      const originLabel = (chosen && chosen.name && chosen.name.trim() && origin) ? chosen.name.trim() : (origin ? stop.city : null);
+      const originNote = originLabel ? ` from ${originLabel}` : '';
       this._optimizeNote = same
-        ? { kind: 'ok', text: `Already backtrack-free — your ${placed.length} mapped stops were in an efficient order.` }
-        : { kind: 'ok', text: `Reordered ${placed.length} stops to cut backtracking — walking route ${savedPct > 0 ? savedPct + '% shorter' : 'tightened'} (${before.toFixed(1)} → ${bestLen.toFixed(1)} km). Times kept in order. Undo with ⌘/Ctrl-Z.` };
+        ? { kind: 'ok', text: `Already the most efficient order${originNote} — no changes needed.` }
+        : { kind: 'ok', text: `Reordered ${placed.length} stops${originNote} — route ${savedPct > 0 ? savedPct + '% shorter' : 'tightened'} (${before.toFixed(1)} → ${bestLen.toFixed(1)} km). Times kept in order. Undo with ⌘/Ctrl-Z.` };
       this.bump();
     }
 
@@ -577,7 +686,7 @@
     removeTodo(i) { this.snapshot(); this.data.meta.todos.splice(i, 1); this.bump(); }
 
     /* ---------- itinerary / accommodation ---------- */
-    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this._optimizeNote = null; this.bumpModal(); }
+    openStop(idx) { this.openStopIdx = idx; this.activeDay = null; this._optimizeNote = null; this._selectedItem = null; this.bumpModal(); }
     closeStop() { this.openStopIdx = null; this.bumpModal(); }
     openAccom(idx) { this.accomOpenIdx = idx; this.bumpModal(); }
     closeAccom() { this.accomOpenIdx = null; this.bumpModal(); }
@@ -796,7 +905,7 @@
         this.renderAccomModal(trip, d, fmt) +
         this.renderBudgetModal(budget, travelers, nights);
 
-      // re-attach persistent map node + saved indicator state
+      // re-attach persistent aside map node
       const holder = this.root.querySelector('#map-holder');
       if (holder) { holder.appendChild(this.mapEl); if (this.leafletMap) this.leafletMap.invalidateSize(); }
       // re-attach the per-day itinerary map (it lives inside the modal root)
@@ -1025,12 +1134,15 @@
         const dayObj = stop.itinerary[activeDay] || (stop.itinerary[activeDay] = { items: [], outfits: [] });
         const itemList = dayObj.items || [];
         const flashIdx = this._flashItem; this._flashItem = null;
-        const placedCount = itemList.filter(it => this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''))).length;
+        const selIdx = this._selectedItem;
+        const placedCount = this.countPlaced(stop, itemList);
         const items = itemList.map((it, ii) => {
-          const placed = !!this._geoCache.get(normKey((it.address || '').trim()) + '|' + normKey(stop.city || ''));
-          const hasAddr = /\S/.test(it.address || '');
-          return `<div class="item${ii === flashIdx ? ' flash' : ''}" data-idx="${ii}">
-          <span class="item-num${placed ? ' placed' : (hasAddr ? '' : ' empty')}" title="${placed ? 'Mapped' : hasAddr ? 'Locating…' : 'Add an address to map this'}">${ii + 1}</span>
+          const geoQuery = (it.address || '').trim() || (it.text || '').trim();
+          const geoCity = geoQuery.includes(',') ? '' : (stop.city || '');
+          const placed = !!(geoQuery && (this._geoCache.get(normKey(geoQuery) + '|' + normKey(geoCity)) || this._geoCache.get(normKey(geoQuery) + '|')));
+          const hasAddr = /\S/.test(geoQuery);
+          return `<div class="item${ii === selIdx ? ' selected' : ''}${ii === flashIdx ? ' flash' : ''}" data-idx="${ii}">
+          <span class="item-num${placed ? ' placed' : (hasAddr ? '' : ' empty')}" title="${placed ? 'Mapped' : hasAddr ? 'Locating…' : 'Type a place name to map this'}">${ii + 1}</span>
           <input class="time" value="${escA(it.time)}" data-ch="item-time" data-i="${ii}" placeholder="9:00">
           <div class="mid">
             <input class="text" value="${escA(it.text)}" data-ch="item-text" data-i="${ii}" placeholder="">
@@ -1241,7 +1353,7 @@
         case 'overlay-iti': if (e.target === t) this.closeStop(); break;
         case 'close-accom': this.closeAccom(); break;
         case 'overlay-accom': if (e.target === t) this.closeAccom(); break;
-        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this._optimizeNote = null; this.bumpModal(); break; }
+        case 'cal-day': { this.activeDay = (this.activeDay === i ? null : i); this._optimizeNote = null; this._selectedItem = null; this.bumpModal(); break; }
         case 'optimize-day': this.optimizeDay(); break;
         case 'optimize-dismiss': this._optimizeNote = null; this.bumpModal(); break;
         case 'add-item': this.addDayItem(trip.stops[this.openStopIdx], this.activeDay); break;
@@ -1281,11 +1393,11 @@
         case 'import-file': this.importFile(e); break;
         // itinerary modal
         case 'iti-city': trip.stops[this.openStopIdx].city = v; this.bump(); break;
-        case 'item-time': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].time = v; this.bump(); break;
-        case 'item-text': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].text = v; this.bump(); break;
-        case 'item-address': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].address = v; this.bump(); break;
-        case 'item-note': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].note = v; this.bump(); break;
-        case 'item-cost': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].cost = v; this.bump(); break;
+        case 'item-time': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].time = v; this.bumpModal(); this.scheduleSave(); break;
+        case 'item-text': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].text = v; this.bumpModal(); this.scheduleSave(); break;
+        case 'item-address': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].address = v; this.bumpModal(); this.scheduleSave(); break;
+        case 'item-note': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].note = v; this.bumpModal(); this.scheduleSave(); break;
+        case 'item-cost': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].cost = v; this.bumpModal(); this.scheduleSave(); break;
         case 'closet-file': { const f = e.target.files && e.target.files[0]; if (f) this.addClosetSticker(f); e.target.value = ''; break; }
         case 'sticker-file': { const files = e.target.files; if (files && files.length) this.addToStickerStock(files); e.target.value = ''; break; }
         // accommodation modal
