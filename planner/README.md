@@ -26,6 +26,22 @@ Only the **map tiles** need an internet connection (OpenStreetMap); offline, the
 as vector markers + lines on a blank background.
 Everything else works offline.
 
+### Single-file build (open anywhere, no server)
+
+If you'd rather just **double-click one file** — no server, no relative-path issues — build the
+self-contained bundle:
+
+```
+cd planner
+node build.js            # writes standalone.html (everything inlined)
+node build.js --watch    # keep standalone.html in sync while you edit the sources
+```
+
+`standalone.html` inlines `styles.css`, `app.js`, and Leaflet into a single HTML file you can open
+directly (a `file://` address). It's a **generated** file — edit the sources (`app.js`, `styles.css`,
+…), not `standalone.html`; run `node build.js` (or leave `--watch` running) and your edits flow into
+it. Map tiles + address geocoding still need internet, same as the served version.
+
 ## Features
 
 - **Multiple trips** — add, rename, remove, drag-to-reorder; two seeded routes (Central Europe,
