@@ -35,6 +35,37 @@
   // sends a preflight. Preflight that the bin server fails to answer is what
   // surfaced as "could not reach". Each store still keeps the raw JSON we send.
   const SYNC_BACKENDS = {
+    // textdb.dev — keyless, no signup, and crucially NO server-side "create":
+    // the key is chosen client-side and the first write creates it. That sidesteps
+    // the create-endpoint failures (HTTP 401/500) that broke the other stores.
+    t: {
+      name: 'textdb',
+      base: 'https://textdb.dev/api/data',
+      newKey() {
+        return 'wb-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8);
+      },
+      async create(body) {
+        const id = this.newKey();
+        await this.put(id, body);   // first write registers the key
+        return id;
+      },
+      async get(id) {
+        const res = await fetch(this.base + '/' + encodeURIComponent(id), { method: 'GET', cache: 'no-store' });
+        if (!res.ok) throw _httpErr(this.name, res.status);
+        const txt = await res.text();
+        if (!txt) throw _notFound();   // empty = nothing stored under this key yet
+        return txt;
+      },
+      async put(id, body) {
+        // application/x-www-form-urlencoded is CORS-safelisted → still no preflight
+        const res = await fetch(this.base + '/' + encodeURIComponent(id), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'value=' + encodeURIComponent(body),
+        });
+        if (!res.ok) throw _httpErr(this.name, res.status);
+      },
+    },
     // jsonblob — keyless, no signup, id returned in the X-jsonblob header.
     j: {
       name: 'jsonblob',
@@ -107,7 +138,7 @@
       },
     },
   };
-  const SYNC_ORDER = ['j', 'e', 'k'];   // create tries these in order
+  const SYNC_ORDER = ['t', 'j', 'e', 'k'];   // create tries these in order
 
   const DEFAULT_STATE = {
     meta: {
