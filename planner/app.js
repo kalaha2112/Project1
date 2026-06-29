@@ -15,11 +15,18 @@
 
   const STORAGE_KEY = 'europe-trip-state-v1';
 
-  /* ---- cross-device cloud sync (jsonblob.com — keyless public bin) ---- */
-  const SYNC_KEY  = 'europe-trip-sync-v1';            // local record of the link {id, rev, lastSyncedAt}
-  const SYNC_API  = 'https://jsonblob.com/api/jsonBlob';
-  const APP_TAG   = 'europe-trip-planner';            // payload marker so we only adopt our own data
-  const SYNC_POLL_MS = 15000;                         // how often to pull while the tab is visible
+  /* ---- cross-device cloud sync (kvdb.io — keyless public bucket) ----
+     Why kvdb.io and not a JSON-bin: every request here is a CORS
+     "simple request" (no custom headers → no preflight), and the new
+     bucket id comes back in the response BODY, so we never depend on a
+     CORS-exposed response header. That makes it work from a plain
+     https page across browsers/networks where header-/preflight-based
+     services silently fail with "Load failed" / "Failed to fetch". */
+  const SYNC_KEY      = 'europe-trip-sync-v1';        // local record of the link {id, rev, lastSyncedAt}
+  const SYNC_API      = 'https://kvdb.io';            // bucket store
+  const SYNC_KEYNAME  = 'state';                      // key within the bucket that holds our payload
+  const APP_TAG       = 'europe-trip-planner';        // payload marker so we only adopt our own data
+  const SYNC_POLL_MS  = 20000;                        // how often to pull while the tab is visible
   const CLOUD_PUSH_DEBOUNCE_MS = 900;                 // coalesce rapid edits into one upload
 
   const DEFAULT_STATE = {
@@ -299,14 +306,18 @@
     }
 
     /* ============================================================
-       CROSS-DEVICE CLOUD SYNC  (jsonblob.com)
+       CROSS-DEVICE CLOUD SYNC  (kvdb.io)
        ------------------------------------------------------------
        localStorage is per-device, so edits on a phone never reach a
        laptop. Sync mirrors the planner state to a keyless public
-       cloud "bin"; both devices link the same short code (the bin
-       id) and pull/push automatically. Conflict policy is simple
+       bucket; both devices link the same short code (the bucket id)
+       and pull/push automatically. Conflict policy is simple
        last-write-wins, keyed on a millisecond `rev` timestamp that
        bumps on every local edit.
+
+       All requests below are deliberately CORS "simple requests":
+       no custom request headers (so no preflight), and the bucket id
+       is read from the response BODY (not a CORS-exposed header).
        ============================================================ */
     loadSyncRec() {
       try { const v = localStorage.getItem(SYNC_KEY); if (v) return JSON.parse(v); } catch (e) {}
@@ -316,41 +327,43 @@
     isLinked() { return !!(this.sync && this.sync.id); }
     saveLocalNow() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data)); } catch (e) {} }
 
-    cloudUrl(id) { return SYNC_API + '/' + encodeURIComponent(id); }
+    bucketUrl(id) { return SYNC_API + '/' + encodeURIComponent(id) + '/' + SYNC_KEYNAME; }
     cloudPayload() { return JSON.stringify({ app: APP_TAG, rev: this.sync.rev || Date.now(), data: this.data }); }
-    netMsg(e) {
-      if (navigator.onLine === false) return 'Offline — will sync when back online.';
-      return (e && e.message) ? e.message : 'Network error.';
+    // a fetch that rejects (no response) means the host was unreachable —
+    // network block, offline, or a CORS failure. Surface that distinctly.
+    unreachable() {
+      const e = new Error(navigator.onLine === false
+        ? 'You appear to be offline.'
+        : 'Could not reach the sync service (network/Wi-Fi may be blocking it).');
+      e.code = 'unreachable'; return e;
     }
+    netMsg(e) { return (e && e.message) ? e.message : 'Network error.'; }
 
     async cloudCreate() {
-      const res = await fetch(SYNC_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: this.cloudPayload(),
-      });
-      if (!res.ok) throw new Error('Could not create sync (' + res.status + ').');
-      // jsonblob returns the new bin id in the X-jsonblob header (CORS-exposed);
-      // fall back to parsing the Location header if present.
-      const id = res.headers.get('X-jsonblob')
-        || ((res.headers.get('Location') || '').split('/').filter(Boolean).pop());
-      if (!id) throw new Error('Sync service did not return a code.');
+      let res;
+      try { res = await fetch(SYNC_API + '/', { method: 'POST', body: '' }); }
+      catch (e) { throw this.unreachable(); }
+      if (!res.ok) throw new Error('Could not create a code (HTTP ' + res.status + ').');
+      const id = (await res.text()).trim();
+      if (!id) throw new Error('Sync service returned an empty code.');
       return id;
     }
     async cloudGet(id) {
-      const res = await fetch(this.cloudUrl(id), { method: 'GET', headers: { 'Accept': 'application/json' }, cache: 'no-store' });
+      let res;
+      try { res = await fetch(this.bucketUrl(id), { method: 'GET', cache: 'no-store' }); }
+      catch (e) { throw this.unreachable(); }
       if (res.status === 404) { const e = new Error('No data found for that code.'); e.code = 404; throw e; }
-      if (!res.ok) throw new Error('Could not reach sync (' + res.status + ').');
-      return res.json();
+      if (!res.ok) throw new Error('Could not read sync (HTTP ' + res.status + ').');
+      const txt = await res.text();
+      if (!txt) { const e = new Error('No data found for that code.'); e.code = 404; throw e; }
+      try { return JSON.parse(txt); } catch (e) { throw new Error('Synced data was unreadable.'); }
     }
     async cloudPut(id) {
-      const res = await fetch(this.cloudUrl(id), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: this.cloudPayload(),
-      });
-      if (res.status === 404) { const e = new Error('Sync code no longer exists.'); e.code = 404; throw e; }
-      if (!res.ok) throw new Error('Could not save to sync (' + res.status + ').');
+      let res;
+      try { res = await fetch(this.bucketUrl(id), { method: 'PUT', body: this.cloudPayload() }); }
+      catch (e) { throw this.unreachable(); }
+      if (res.status === 413) throw new Error('This trip is too large for the free sync tier.');
+      if (!res.ok) throw new Error('Could not save to sync (HTTP ' + res.status + ').');
     }
     validPayload(p) { return !!(p && p.data && p.data.trips && p.data.meta); }
 
@@ -361,12 +374,21 @@
       try {
         if (!this.sync.rev) this.sync.rev = Date.now();
         const id = await this.cloudCreate();
-        this.sync.id = id; this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
+        this.sync.id = id; this.persistSyncRec();
+        await this.cloudPut(id);                 // seed the new bucket with current trips
+        this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
         this._syncBusy = false; this.setSyncStatus('synced', 'Code created'); this.bumpModal();
-      } catch (e) { this._syncBusy = false; this.setSyncStatus('error', this.netMsg(e)); }
+      } catch (e) {
+        this._syncBusy = false;
+        if (!this.sync.lastSyncedAt) { this.sync.id = null; this.persistSyncRec(); }  // creation didn't complete
+        this.setSyncStatus('error', this.netMsg(e)); this.bumpModal();
+      }
     }
     async linkSync(rawId) {
-      const id = (rawId || '').trim().replace(/^.*\/jsonBlob\//, '');  // tolerate a pasted full URL
+      // tolerate a pasted full URL (e.g. https://kvdb.io/<id>/state) — keep just the bucket id
+      let id = (rawId || '').trim();
+      const m = id.match(/kvdb\.io\/([^/\s?#]+)/i);
+      if (m) id = m[1];
       if (!id) { this.setSyncStatus('error', 'Enter a sync code.'); return; }
       if (this._syncBusy) return;
       this._syncBusy = true; this.setSyncStatus('syncing', 'Linking…');
