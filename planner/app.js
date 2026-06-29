@@ -61,24 +61,43 @@
           { method: 'PUT', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + encodeURIComponent(body) },
         ].map((opt) => ({ url, opt }));
       },
-      // read raw text, unwrapping {"value":"..."} if textdb returns a wrapper
-      async _read(id) {
-        const res = await fetch(this._url(id), { method: 'GET', cache: 'no-store' });
-        if (!res.ok) return { ok: false, txt: '' };
-        let txt = await res.text();
-        if (txt && txt.indexOf('"' + APP_TAG + '"') === -1) {
-          try { const o = JSON.parse(txt); if (o && typeof o.value === 'string') txt = o.value; } catch (e) {}
+      // recover our payload OBJECT from whatever textdb hands back: raw JSON,
+      // a {"value":"…"} wrapper, a JSON-string, or a "value=<urlencoded>" body.
+      _extract(txt) {
+        if (!txt) return null;
+        const ours = (o) => (o && o.app === APP_TAG && o.data) ? o : null;
+        const tryP = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
+        let o = tryP(txt);
+        let r = ours(o); if (r) return r;
+        if (o && typeof o === 'object' && typeof o.value === 'string') { r = ours(tryP(o.value)); if (r) return r; }
+        if (typeof o === 'string') { r = ours(tryP(o)); if (r) return r; }
+        // form-style "value=<urlencoded>" (or a bare urlencoded body)
+        let s = txt; const eq = s.indexOf('value='); if (eq !== -1) s = s.slice(eq + 6);
+        try { r = ours(tryP(decodeURIComponent(s.replace(/\+/g, ' ')))); if (r) return r; } catch (e) {}
+        // last resort: slice from our object's start and parse the balanced braces
+        const i = txt.indexOf('{"app":"' + APP_TAG + '"');
+        if (i !== -1) {
+          let depth = 0;
+          for (let k = i; k < txt.length; k++) {
+            if (txt[k] === '{') depth++;
+            else if (txt[k] === '}') { depth--; if (depth === 0) { r = ours(tryP(txt.slice(i, k + 1))); if (r) return r; break; } }
+          }
         }
-        return { ok: true, txt };
+        return null;
       },
-      _hasOurs(txt) { return !!txt && txt.indexOf('"' + APP_TAG + '"') !== -1; },
+      async _readObj(id) {
+        const res = await fetch(this._url(id), { method: 'GET', cache: 'no-store' });
+        if (!res.ok) return { status: res.status, obj: null };
+        return { status: res.status, obj: this._extract(await res.text()) };
+      },
       async get(id) {
-        const r = await this._read(id);
-        if (!r.ok) throw _httpErr(this.name, 0);
-        if (!this._hasOurs(r.txt)) throw _notFound();
-        return r.txt;
+        const r = await this._readObj(id);
+        if (r.status && r.status !== 200) throw _httpErr(this.name, r.status);
+        if (!r.obj) throw _notFound();
+        return JSON.stringify(r.obj);   // hand cloudGet clean JSON
       },
       async put(id, body) {
+        let wantRev; try { wantRev = JSON.parse(body).rev; } catch (e) {}
         const writes = this._writes(id, body);
         const order = this._strat != null
           ? [this._strat, ...writes.map((_, i) => i).filter((i) => i !== this._strat)]
@@ -89,8 +108,8 @@
           try { res = await fetch(writes[i].url, writes[i].opt); } catch (e) { throw e; }  // unreachable → bubble up
           lastStatus = res.status;
           if (res.ok) {
-            const r = await this._read(id);                 // verify it actually persisted
-            if (r.ok && this._hasOurs(r.txt)) { this._strat = i; return; }
+            const r = await this._readObj(id);   // confirm OUR write (matching rev) actually round-trips
+            if (r.obj && (wantRev == null || r.obj.rev === wantRev)) { this._strat = i; return; }
           }
         }
         throw new Error('textdb: endpoint did not store the data (HTTP ' + (lastStatus || 0) + ').');
