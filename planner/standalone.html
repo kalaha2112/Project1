@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-06-29T07:01:57.636Z
+  Built: 2026-06-29T07:09:22.189Z
 -->
 
 <html lang="en">
@@ -1000,6 +1000,10 @@ a { color: inherit; }
 }
 .grip:active { cursor: grabbing; background: var(--line); }
 .grip svg { width: 16px; height: 20px; }
+/* pointer-drag reorder feedback */
+.stop.dragging { opacity: .45; }
+.stop.drop-before > .card { box-shadow: 0 -3px 0 -1px var(--red), 0 1px 2px rgba(33,26,24,.04); }
+.stop.drop-after > .card { box-shadow: 0 3px 0 -1px var(--red), 0 1px 2px rgba(33,26,24,.04); }
 .trash {
   display: flex; align-items: center; justify-content: center; width: 18px; height: 16px;
   color: var(--ink-faint); border: none; background: transparent; cursor: pointer;
@@ -2467,7 +2471,7 @@ a { color: inherit; }
               <span class="chev">›</span>
             </button>
             <div class="foot">
-              <div class="grip" draggable="true" data-drag="stop" data-i="${idx}" title="Drag to reorder">${svg(I.grip, { w: 12, h: 16, fill: 'currentColor', stroke: 'none' })}</div>
+              <div class="grip" data-grip-stop="${idx}" title="Drag to reorder">${svg(I.grip, { w: 12, h: 16, fill: 'currentColor', stroke: 'none' })}</div>
               <button class="trash" data-act="stop-delete" data-i="${idx}" title="Remove stop" aria-label="Remove stop">${svg(I.trash, { w: 14, h: 14, sw: 2.4 })}</button>
             </div>
           </div>
@@ -2962,7 +2966,50 @@ a { color: inherit; }
         if (img) { e.preventDefault(); this.addToStickerStock([img.getAsFile()]); }
       }
     }
+    /* ---- pointer-based stop reordering (touch-friendly) ---- */
+    _startStopDrag(e, grip) {
+      const stopEl = grip.closest('.stop');
+      this._stopDrag = { fromIdx: Number(grip.dataset.gripStop), pointerId: e.pointerId, startY: e.clientY, moved: false, targetIdx: null };
+      try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+      if (stopEl) stopEl.classList.add('dragging');
+      this._onSPM = (ev) => this._doStopDrag(ev);
+      this._onSPU = (ev) => this._endStopDrag(ev);
+      document.addEventListener('pointermove', this._onSPM, { passive: false });
+      document.addEventListener('pointerup', this._onSPU, { once: true });
+      document.addEventListener('pointercancel', this._onSPU, { once: true });
+    }
+    _stopEls() { return [...this.root.querySelectorAll('.route .stop')]; }
+    _dropIndexAt(y) {
+      const els = this._stopEls();
+      for (let i = 0; i < els.length; i++) { const r = els[i].getBoundingClientRect(); if (y < r.top + r.height / 2) return i; }
+      return els.length;
+    }
+    _doStopDrag(e) {
+      const d = this._stopDrag; if (!d) return;
+      if (e.cancelable) e.preventDefault();
+      if (Math.abs(e.clientY - d.startY) > 4) d.moved = true;
+      const ins = this._dropIndexAt(e.clientY);
+      d.targetIdx = ins;
+      const els = this._stopEls();
+      els.forEach((s, i) => { s.classList.toggle('drop-before', d.moved && i === ins); s.classList.toggle('drop-after', d.moved && ins === els.length && i === els.length - 1); });
+    }
+    _endStopDrag() {
+      const d = this._stopDrag; if (!d) return;
+      document.removeEventListener('pointermove', this._onSPM);
+      this._stopDrag = null;
+      if (d.moved && d.targetIdx != null) {
+        const n = this.currentTrip().stops.length;
+        let to = d.targetIdx > d.fromIdx ? d.targetIdx - 1 : d.targetIdx;
+        to = Math.max(0, Math.min(n - 1, to));
+        this.reorderStop(d.fromIdx, to);   // bump() re-renders and clears drag classes
+      } else {
+        this.render();                      // restore (clear .dragging)
+      }
+    }
     onPointerDown(e) {
+      // pointer-based stop reorder (works on touch + mouse; native HTML5 DnD doesn't fire from touch on iOS)
+      const grip = e.target.closest('.grip[data-grip-stop]');
+      if (grip) { e.preventDefault(); this._startStopDrag(e, grip); return; }
       const sticker = e.target.closest('.placed-sticker');
       if (!sticker) return;
       if (e.target.closest('.placed-sticker__delete')) return;
