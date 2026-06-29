@@ -15,6 +15,13 @@
 
   const STORAGE_KEY = 'europe-trip-state-v1';
 
+  /* ---- cross-device cloud sync (jsonblob.com — keyless public bin) ---- */
+  const SYNC_KEY  = 'europe-trip-sync-v1';            // local record of the link {id, rev, lastSyncedAt}
+  const SYNC_API  = 'https://jsonblob.com/api/jsonBlob';
+  const APP_TAG   = 'europe-trip-planner';            // payload marker so we only adopt our own data
+  const SYNC_POLL_MS = 15000;                         // how often to pull while the tab is visible
+  const CLOUD_PUSH_DEBOUNCE_MS = 900;                 // coalesce rapid edits into one upload
+
   const DEFAULT_STATE = {
     meta: {
       travelers: 2, milesBalance: 150000, milesPerTicket: 25000,
@@ -125,6 +132,7 @@
   const I = {
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
     undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    sync: '<path d="M21 12a9 9 0 0 0-15-6.7L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 15 6.7L21 16"/><path d="M21 21v-5h-5"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5"/><path d="M12 4v12"/>',
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
@@ -168,6 +176,15 @@
       this._lastCoordKey = '';
       this._history = [];
       this.stickerPanelOpen = false;
+      // ---- cloud sync ----
+      this.sync = this.loadSyncRec();   // { id, rev, lastSyncedAt }
+      this.syncOpen = false;            // sync modal open?
+      this._syncBusy = false;           // an in-flight request guards against overlap
+      this._syncStatus = this.isLinked() ? 'synced' : 'off'; // off|syncing|synced|offline|error
+      this._syncMsg = '';
+      this._syncCodeDraft = '';
+      this._cloudPushTimer = null;
+      this._syncPoll = null;
       this._stockStickerDrag = null;
       this._movingSticker = null;
       this._resizingSticker = null;
@@ -198,6 +215,8 @@
       this.loadState();
       this.render();
       this.ensureMap(0);
+      this.startSyncLoop();
+      if (this.isLinked()) this.pullCloud();   // pick up edits made on another device
     }
     currentTrip() { return this.data.trips[this.data.active]; }
     legByIndex(i) { const t = this.currentTrip(); return i === 0 ? t.outboundLeg : t.stops[i - 1].leg; }
@@ -214,7 +233,8 @@
         this.renderStickerPanel() +
         this.renderItineraryModal(trip, d, fmt) +
         this.renderAccomModal(trip, d, fmt) +
-        this.renderBudgetModal(budget, travelers, nights);
+        this.renderBudgetModal(budget, travelers, nights) +
+        this.renderSyncModal();
       // modal-only re-render still has to (re)mount the per-day map node
       this.mountDayMap();
     }
@@ -231,6 +251,8 @@
       clearTimeout(this._saveTimer);
       this._saveTimer = setTimeout(() => {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data)); this.flashSaved(); } catch (e) {}
+        // a local edit advances our revision and queues a cloud upload (if linked)
+        if (this.isLinked()) { this.sync.rev = Date.now(); this.persistSyncRec(); this.scheduleCloudPush(); }
       }, 450);
     }
     flashSaved() {
@@ -274,6 +296,188 @@
         if (!ps.target) ps.target = 'page';
         if (!ps.image) { const s = d.stickerStock.find(s => s.id === ps.stockId); if (s) ps.image = s.image; }
       });
+    }
+
+    /* ============================================================
+       CROSS-DEVICE CLOUD SYNC  (jsonblob.com)
+       ------------------------------------------------------------
+       localStorage is per-device, so edits on a phone never reach a
+       laptop. Sync mirrors the planner state to a keyless public
+       cloud "bin"; both devices link the same short code (the bin
+       id) and pull/push automatically. Conflict policy is simple
+       last-write-wins, keyed on a millisecond `rev` timestamp that
+       bumps on every local edit.
+       ============================================================ */
+    loadSyncRec() {
+      try { const v = localStorage.getItem(SYNC_KEY); if (v) return JSON.parse(v); } catch (e) {}
+      return { id: null, rev: 0, lastSyncedAt: 0 };
+    }
+    persistSyncRec() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(this.sync)); } catch (e) {} }
+    isLinked() { return !!(this.sync && this.sync.id); }
+    saveLocalNow() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data)); } catch (e) {} }
+
+    cloudUrl(id) { return SYNC_API + '/' + encodeURIComponent(id); }
+    cloudPayload() { return JSON.stringify({ app: APP_TAG, rev: this.sync.rev || Date.now(), data: this.data }); }
+    netMsg(e) {
+      if (navigator.onLine === false) return 'Offline — will sync when back online.';
+      return (e && e.message) ? e.message : 'Network error.';
+    }
+
+    async cloudCreate() {
+      const res = await fetch(SYNC_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: this.cloudPayload(),
+      });
+      if (!res.ok) throw new Error('Could not create sync (' + res.status + ').');
+      // jsonblob returns the new bin id in the X-jsonblob header (CORS-exposed);
+      // fall back to parsing the Location header if present.
+      const id = res.headers.get('X-jsonblob')
+        || ((res.headers.get('Location') || '').split('/').filter(Boolean).pop());
+      if (!id) throw new Error('Sync service did not return a code.');
+      return id;
+    }
+    async cloudGet(id) {
+      const res = await fetch(this.cloudUrl(id), { method: 'GET', headers: { 'Accept': 'application/json' }, cache: 'no-store' });
+      if (res.status === 404) { const e = new Error('No data found for that code.'); e.code = 404; throw e; }
+      if (!res.ok) throw new Error('Could not reach sync (' + res.status + ').');
+      return res.json();
+    }
+    async cloudPut(id) {
+      const res = await fetch(this.cloudUrl(id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: this.cloudPayload(),
+      });
+      if (res.status === 404) { const e = new Error('Sync code no longer exists.'); e.code = 404; throw e; }
+      if (!res.ok) throw new Error('Could not save to sync (' + res.status + ').');
+    }
+    validPayload(p) { return !!(p && p.data && p.data.trips && p.data.meta); }
+
+    /* ----- user actions ----- */
+    async createSync() {
+      if (this._syncBusy) return;
+      this._syncBusy = true; this.setSyncStatus('syncing', 'Creating…');
+      try {
+        if (!this.sync.rev) this.sync.rev = Date.now();
+        const id = await this.cloudCreate();
+        this.sync.id = id; this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
+        this._syncBusy = false; this.setSyncStatus('synced', 'Code created'); this.bumpModal();
+      } catch (e) { this._syncBusy = false; this.setSyncStatus('error', this.netMsg(e)); }
+    }
+    async linkSync(rawId) {
+      const id = (rawId || '').trim().replace(/^.*\/jsonBlob\//, '');  // tolerate a pasted full URL
+      if (!id) { this.setSyncStatus('error', 'Enter a sync code.'); return; }
+      if (this._syncBusy) return;
+      this._syncBusy = true; this.setSyncStatus('syncing', 'Linking…');
+      try {
+        const payload = await this.cloudGet(id);
+        if (!this.validPayload(payload)) throw new Error('That code has no planner data.');
+        this.snapshot();
+        this.data = payload.data; this.migrate(); this._lastCoordKey = '';
+        this.sync.id = id; this.sync.rev = Number(payload.rev) || Date.now(); this.sync.lastSyncedAt = Date.now();
+        this.persistSyncRec(); this.saveLocalNow();
+        this._syncBusy = false; this._syncCodeDraft = '';
+        this.setSyncStatus('synced', 'Linked'); this.render(); this.bumpModal();
+      } catch (e) {
+        this._syncBusy = false;
+        this.setSyncStatus('error', e.code === 404 ? 'No data found for that code.' : this.netMsg(e));
+      }
+    }
+    unlinkSync() {
+      clearTimeout(this._cloudPushTimer);
+      this.sync = { id: null, rev: this.sync.rev || 0, lastSyncedAt: 0 };
+      this.persistSyncRec(); this.setSyncStatus('off', ''); this.bumpModal();
+    }
+    syncNow() { this.pullCloud({ force: true }); }
+
+    /* ----- push / pull ----- */
+    scheduleCloudPush() {
+      if (!this.isLinked()) return;
+      clearTimeout(this._cloudPushTimer);
+      this._cloudPushTimer = setTimeout(() => this.pushCloud(), CLOUD_PUSH_DEBOUNCE_MS);
+    }
+    async pushCloud() {
+      if (!this.isLinked()) return;
+      if (this._syncBusy) { this.scheduleCloudPush(); return; }   // retry once current request settles
+      this._syncBusy = true; this.setSyncStatus('syncing', 'Saving…');
+      try {
+        await this.cloudPut(this.sync.id);
+        this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
+        this._syncBusy = false; this.setSyncStatus('synced', '');
+      } catch (e) {
+        this._syncBusy = false;
+        if (e.code === 404) this.setSyncStatus('error', 'Sync code no longer exists — re-create or re-link.');
+        else { this.setSyncStatus('offline', this.netMsg(e)); this.scheduleCloudPush(); }
+      }
+    }
+    async pullCloud(opts = {}) {
+      if (!this.isLinked() || this._syncBusy) return;
+      // don't clobber an itinerary/accom/budget modal the user is mid-edit in;
+      // an explicit "Sync now" (force) still goes through.
+      const editingOpen = (this.openStopIdx != null || this.accomOpenIdx != null || this.budgetOpen);
+      if (!opts.force && editingOpen) return;
+      this._syncBusy = true; if (opts.force) this.setSyncStatus('syncing', 'Checking…');
+      try {
+        const payload = await this.cloudGet(this.sync.id);
+        const remoteRev = Number(payload && payload.rev) || 0;
+        const localRev = this.sync.rev || 0;
+        if (this.validPayload(payload) && remoteRev > localRev) {
+          // remote is newer — adopt it (but never clobber a modal the user is typing in)
+          this.data = payload.data; this.migrate(); this._lastCoordKey = '';
+          this.sync.rev = remoteRev; this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
+          this.saveLocalNow();
+          this._syncBusy = false; this.setSyncStatus('synced', 'Updated from another device');
+          this.render(); this.bumpModal(); this.touchMap();
+        } else if (remoteRev < localRev) {
+          // we hold newer edits (e.g. made offline) — push them up
+          this._syncBusy = false; this.setSyncStatus('synced', ''); this.scheduleCloudPush();
+        } else {
+          this.sync.lastSyncedAt = Date.now(); this.persistSyncRec();
+          this._syncBusy = false; this.setSyncStatus('synced', opts.force ? 'Up to date' : '');
+        }
+      } catch (e) {
+        this._syncBusy = false;
+        if (e.code === 404) this.setSyncStatus('error', 'Sync code no longer exists.');
+        else this.setSyncStatus('offline', opts.force ? this.netMsg(e) : '');
+      }
+    }
+    startSyncLoop() {
+      if (this._syncPoll) return;
+      this._syncPoll = setInterval(() => {
+        if (this.isLinked() && document.visibilityState === 'visible') this.pullCloud();
+      }, SYNC_POLL_MS);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.pullCloud(); });
+      window.addEventListener('focus', () => this.pullCloud());
+      window.addEventListener('online', () => { if (this.isLinked()) this.pullCloud(); });
+    }
+
+    /* ----- status UI ----- */
+    setSyncStatus(status, msg) { this._syncStatus = status; this._syncMsg = msg || ''; this.paintSyncStatus(); }
+    syncStatusLabel() {
+      switch (this._syncStatus) {
+        case 'syncing': return this._syncMsg || 'Syncing…';
+        case 'synced':  return this._syncMsg || 'Synced';
+        case 'offline': return this._syncMsg || 'Offline';
+        case 'error':   return this._syncMsg || 'Sync error';
+        default:        return this.isLinked() ? 'Synced' : 'Not synced';
+      }
+    }
+    relTime(ts) {
+      if (!ts) return '';
+      const s = Math.round((Date.now() - ts) / 1000);
+      if (s < 60) return 'just now';
+      const m = Math.round(s / 60); if (m < 60) return m + ' min ago';
+      const h = Math.round(m / 60); if (h < 24) return h + ' h ago';
+      return new Date(ts).toLocaleDateString();
+    }
+    paintSyncStatus() {
+      const dot = this.root && this.root.querySelector('.sync-dot');
+      if (dot) dot.className = 'sync-dot s-' + (this.isLinked() ? this._syncStatus : 'off');
+      const st = this.modalEl && this.modalEl.querySelector('.sync-status');
+      if (st) { st.textContent = this.syncStatusLabel(); st.className = 'sync-status s-' + this._syncStatus; }
+      const when = this.modalEl && this.modalEl.querySelector('.sync-when');
+      if (when) when.textContent = this.sync.lastSyncedAt ? ('Last synced ' + this.relTime(this.sync.lastSyncedAt)) : '';
     }
 
     /* ---------- dates ---------- */
@@ -904,7 +1108,8 @@
         this.renderStickerPanel() +
         this.renderItineraryModal(trip, d, fmt) +
         this.renderAccomModal(trip, d, fmt) +
-        this.renderBudgetModal(budget, travelers, nights);
+        this.renderBudgetModal(budget, travelers, nights) +
+        this.renderSyncModal();
 
       // re-attach persistent aside map node
       const holder = this.root.querySelector('#map-holder');
@@ -933,6 +1138,7 @@
           <button class="tool-btn" data-act="export" title="Export trip" aria-label="Export trip">${svg(I.download)}<span class="tool-lbl">Export</span></button>
           <button class="tool-btn" data-act="import" title="Import trip" aria-label="Import trip">${svg(I.upload)}<span class="tool-lbl">Import</span></button>
           <input type="file" accept="application/json" class="import-file" data-ch="import-file" style="display:none">
+          <button class="tool-btn sync-toggle-btn${this.isLinked() ? ' active' : ''}" data-act="open-sync" title="Sync across devices" aria-label="Sync across devices"><span class="sync-dot s-${this.isLinked() ? this._syncStatus : 'off'}"></span>${svg(I.sync)}<span class="tool-lbl">Sync</span></button>
           <div class="toolbar-divider"></div>
           <button class="tool-btn sticker-toggle-btn${this.stickerPanelOpen ? ' active' : ''}" data-act="toggle-stickers" title="Memories" aria-label="Memories">${svg(I.sticker)}<span class="tool-lbl">Memory</span></button>
         </div>
@@ -1288,6 +1494,55 @@
       </div>`;
     }
 
+    renderSyncModal() {
+      if (!this.syncOpen) return '';
+      const linked = this.isLinked();
+      const statusCls = 's-' + (this._syncStatus || (linked ? 'synced' : 'off'));
+      const when = this.sync.lastSyncedAt ? ('Last synced ' + this.relTime(this.sync.lastSyncedAt)) : '';
+      const body = linked ? `
+        <p class="sync-lead">This planner is syncing. To see the same trips on another device, open this page there, tap <b>Sync</b> → <b>Link a code</b>, and enter the code below.</p>
+        <label class="sync-field-lbl">Your sync code</label>
+        <div class="sync-code-row">
+          <input class="sync-code-out" value="${escA(this.sync.id)}" readonly data-act="sync-select">
+          <button class="sync-btn" data-act="sync-copy">Copy</button>
+        </div>
+        <div class="sync-row">
+          <span class="sync-status ${statusCls}">${esc(this.syncStatusLabel())}</span>
+          <span class="sync-when">${esc(when)}</span>
+        </div>
+        <div class="sync-actions">
+          <button class="sync-btn primary" data-act="sync-now"${this._syncBusy ? ' disabled' : ''}>Sync now</button>
+          <button class="sync-btn ghost" data-act="sync-unlink">Unlink this device</button>
+        </div>
+        <p class="sync-note">Trips are stored in a free public cloud bin. Anyone with this code can read or change them — treat it like a shared password. Offline edits upload automatically when you reconnect.</p>
+      ` : `
+        <p class="sync-lead">Sync keeps your trips in step across phone and laptop. Create a code on one device, then link it on the other.</p>
+        <div class="sync-actions">
+          <button class="sync-btn primary" data-act="sync-create"${this._syncBusy ? ' disabled' : ''}>Create a sync code</button>
+        </div>
+        <div class="sync-or"><span>or link a code</span></div>
+        <label class="sync-field-lbl">Already have a code? Enter it here</label>
+        <div class="sync-code-row">
+          <input class="sync-code-in" placeholder="Paste sync code" data-ch="sync-code-in" value="${escA(this._syncCodeDraft || '')}">
+          <button class="sync-btn" data-act="sync-link"${this._syncBusy ? ' disabled' : ''}>Link</button>
+        </div>
+        <div class="sync-row"><span class="sync-status ${statusCls}">${esc(this.syncStatusLabel())}</span></div>
+        <p class="sync-note">Your trips will be stored in a free public cloud bin so both devices can reach them. Anyone with the code can view or edit it, so keep it private.</p>
+      `;
+      return `<div class="overlay" data-act="overlay-sync">
+        <div class="dialog sync-dialog" data-stop>
+          <div class="head"><div class="row">
+            <div style="flex:1">
+              <div class="eyebrow">Cross-device sync</div>
+              <div class="sync-title">${linked ? 'Synced' : 'Set up sync'}</div>
+            </div>
+            <button class="modal-x" data-act="close-sync">✕</button>
+          </div></div>
+          <div class="sync-body">${body}</div>
+        </div>
+      </div>`;
+    }
+
     /* ============================================================
        EVENT DELEGATION
        ============================================================ */
@@ -1325,7 +1580,8 @@
       });
     }
     onEscape() {
-      if (this.budgetOpen) { this.budgetOpen = false; this.bumpModal(); }
+      if (this.syncOpen) { this.syncOpen = false; this.bumpModal(); }
+      else if (this.budgetOpen) { this.budgetOpen = false; this.bumpModal(); }
       else if (this.accomOpenIdx != null) { this.closeAccom(); }
       else if (this.openStopIdx != null) { this.closeStop(); }
     }
@@ -1355,6 +1611,23 @@
         case 'open-budget': this.budgetOpen = true; this.bumpModal(); break;
         case 'close-budget': this.budgetOpen = false; this.bumpModal(); break;
         case 'overlay-budget': if (e.target === t) { this.budgetOpen = false; this.bumpModal(); } break;
+        case 'open-sync': this.syncOpen = true; this.bumpModal(); break;
+        case 'close-sync': this.syncOpen = false; this.bumpModal(); break;
+        case 'overlay-sync': if (e.target === t) { this.syncOpen = false; this.bumpModal(); } break;
+        case 'sync-create': this.createSync(); break;
+        case 'sync-link': { const inp = this.modalEl.querySelector('.sync-code-in'); this.linkSync(inp ? inp.value : this._syncCodeDraft); break; }
+        case 'sync-now': this.syncNow(); break;
+        case 'sync-unlink': if (confirm('Unlink this device? Your trips stay here but stop syncing with other devices.')) this.unlinkSync(); break;
+        case 'sync-select': if (t.select) t.select(); break;
+        case 'sync-copy': {
+          const inp = this.modalEl.querySelector('.sync-code-out');
+          if (inp) {
+            inp.select();
+            try { navigator.clipboard.writeText(inp.value); } catch (err) { try { document.execCommand('copy'); } catch (e2) {} }
+            this.setSyncStatus('synced', 'Code copied');
+          }
+          break;
+        }
         case 'close-iti': this.closeStop(); break;
         case 'overlay-iti': if (e.target === t) this.closeStop(); break;
         case 'close-accom': this.closeAccom(); break;
@@ -1399,6 +1672,7 @@
         case 'stop-nights': trip.stops[i].nights = Number(v) || 0; this.bump(); break;
         case 'todo-text': meta.todos[i].text = v; this.bump(); break;
         case 'import-file': this.importFile(e); break;
+        case 'sync-code-in': this._syncCodeDraft = v; break;
         // itinerary modal
         case 'iti-city': trip.stops[this.openStopIdx].city = v; this.bump(); break;
         case 'item-time': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].time = v; this.bumpModal(); this.scheduleSave(); break;
