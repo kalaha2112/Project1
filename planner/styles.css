@@ -299,10 +299,11 @@ a { color: inherit; }
   width: 34px; height: 20px; cursor: grab; color: var(--ink-faint); flex-shrink: 0;
   margin: 0 0 0 -8px;                  /* usable touch target, minimal added card height */
   touch-action: none; opacity: .7;     /* quiet, matching the trash icon */
+  position: relative; top: -1px;        /* align dots' bottom with the trash glyph bottom */
 }
 .grip:hover { opacity: 1; color: var(--ink-soft); }
 .grip:active { cursor: grabbing; }
-.grip svg { width: 16px; height: 20px; display: block; }
+.grip svg { display: block; }
 /* pointer-drag reorder feedback */
 .stop.dragging { z-index: 6; opacity: .97; will-change: transform; transform: translateZ(0); }
 .stop.dragging > .card { box-shadow: 0 5px 14px rgba(33,26,24,.16); border-color: var(--red); }

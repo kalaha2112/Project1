@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-06-29T07:28:13.066Z
+  Built: 2026-06-29T07:37:44.013Z
 -->
 
 <html lang="en">
@@ -996,10 +996,11 @@ a { color: inherit; }
   width: 34px; height: 20px; cursor: grab; color: var(--ink-faint); flex-shrink: 0;
   margin: 0 0 0 -8px;                  /* usable touch target, minimal added card height */
   touch-action: none; opacity: .7;     /* quiet, matching the trash icon */
+  position: relative; top: -1px;        /* align dots' bottom with the trash glyph bottom */
 }
 .grip:hover { opacity: 1; color: var(--ink-soft); }
 .grip:active { cursor: grabbing; }
-.grip svg { width: 16px; height: 20px; display: block; }
+.grip svg { display: block; }
 /* pointer-drag reorder feedback */
 .stop.dragging { z-index: 6; opacity: .97; will-change: transform; transform: translateZ(0); }
 .stop.dragging > .card { box-shadow: 0 5px 14px rgba(33,26,24,.16); border-color: var(--red); }
@@ -2472,7 +2473,7 @@ a { color: inherit; }
               <span class="chev">›</span>
             </button>
             <div class="foot">
-              <div class="grip" data-grip-stop="${idx}" title="Drag to reorder">${svg(I.grip, { w: 12, h: 16, fill: 'currentColor', stroke: 'none' })}</div>
+              <div class="grip" data-grip-stop="${idx}" title="Drag to reorder"><svg width="12" height="18" viewBox="0 0 8 14" fill="currentColor" aria-hidden="true"><circle cx="1.6" cy="1.6" r="1.6"/><circle cx="6.4" cy="1.6" r="1.6"/><circle cx="1.6" cy="7" r="1.6"/><circle cx="6.4" cy="7" r="1.6"/><circle cx="1.6" cy="12.4" r="1.6"/><circle cx="6.4" cy="12.4" r="1.6"/></svg></div>
               <button class="trash" data-act="stop-delete" data-i="${idx}" title="Remove stop" aria-label="Remove stop">${svg(I.trash, { w: 14, h: 14, sw: 2.4 })}</button>
             </div>
           </div>
