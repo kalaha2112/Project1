@@ -41,29 +41,59 @@
     t: {
       name: 'textdb',
       base: 'https://textdb.dev/api/data',
+      _strat: null,   // index of the write format confirmed to persist (memoized)
       newKey() {
         return 'wb-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8);
       },
       async create(body) {
         const id = this.newKey();
-        await this.put(id, body);   // first write registers the key
+        await this.put(id, body);
         return id;
       },
+      _url(id) { return this.base + '/' + encodeURIComponent(id); },
+      // candidate write formats — we don't know which textdb wants, so try each
+      _writes(id, body) {
+        const url = this._url(id);
+        return [
+          { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + encodeURIComponent(body) },
+          { method: 'POST', body },                  // raw text/plain POST
+          { method: 'PUT', body },                   // raw text/plain PUT
+          { method: 'PUT', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + encodeURIComponent(body) },
+        ].map((opt) => ({ url, opt }));
+      },
+      // read raw text, unwrapping {"value":"..."} if textdb returns a wrapper
+      async _read(id) {
+        const res = await fetch(this._url(id), { method: 'GET', cache: 'no-store' });
+        if (!res.ok) return { ok: false, txt: '' };
+        let txt = await res.text();
+        if (txt && txt.indexOf('"' + APP_TAG + '"') === -1) {
+          try { const o = JSON.parse(txt); if (o && typeof o.value === 'string') txt = o.value; } catch (e) {}
+        }
+        return { ok: true, txt };
+      },
+      _hasOurs(txt) { return !!txt && txt.indexOf('"' + APP_TAG + '"') !== -1; },
       async get(id) {
-        const res = await fetch(this.base + '/' + encodeURIComponent(id), { method: 'GET', cache: 'no-store' });
-        if (!res.ok) throw _httpErr(this.name, res.status);
-        const txt = await res.text();
-        if (!txt) throw _notFound();   // empty = nothing stored under this key yet
-        return txt;
+        const r = await this._read(id);
+        if (!r.ok) throw _httpErr(this.name, 0);
+        if (!this._hasOurs(r.txt)) throw _notFound();
+        return r.txt;
       },
       async put(id, body) {
-        // application/x-www-form-urlencoded is CORS-safelisted → still no preflight
-        const res = await fetch(this.base + '/' + encodeURIComponent(id), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'value=' + encodeURIComponent(body),
-        });
-        if (!res.ok) throw _httpErr(this.name, res.status);
+        const writes = this._writes(id, body);
+        const order = this._strat != null
+          ? [this._strat, ...writes.map((_, i) => i).filter((i) => i !== this._strat)]
+          : writes.map((_, i) => i);
+        let lastStatus = 0;
+        for (const i of order) {
+          let res;
+          try { res = await fetch(writes[i].url, writes[i].opt); } catch (e) { throw e; }  // unreachable → bubble up
+          lastStatus = res.status;
+          if (res.ok) {
+            const r = await this._read(id);                 // verify it actually persisted
+            if (r.ok && this._hasOurs(r.txt)) { this._strat = i; return; }
+          }
+        }
+        throw new Error('textdb: endpoint did not store the data (HTTP ' + (lastStatus || 0) + ').');
       },
     },
     // jsonblob — keyless, no signup, id returned in the X-jsonblob header.
