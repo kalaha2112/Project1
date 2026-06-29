@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-06-29T07:37:44.013Z
+  Built: 2026-06-29T07:43:57.931Z
 -->
 
 <html lang="en">
@@ -1602,6 +1602,7 @@ a { color: inherit; }
     grip: '<circle cx="3.5" cy="3" r="1.5"/><circle cx="8.5" cy="3" r="1.5"/><circle cx="3.5" cy="8" r="1.5"/><circle cx="8.5" cy="8" r="1.5"/><circle cx="3.5" cy="13" r="1.5"/><circle cx="8.5" cy="13" r="1.5"/>',
     plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
     spark: '<path d="M12 3l1.6 5.1L19 9.7l-4.4 2.9L16 18l-4-3.2L8 18l1.4-5.4L5 9.7l5.4-.6z"/>',
+    clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
     sticker: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'
   };
   const svg = (paths, opt = {}) => {
@@ -2529,6 +2530,9 @@ a { color: inherit; }
           <div class="add-outfit" data-act="sticker-panel-add" tabindex="0" title="Click, paste, or drop to add photos">
             ${svg(I.plus, { w: 14, h: 14, sw: 2.2, stroke: '#C8901F' })}<span>Add</span>
           </div>
+          <div class="add-outfit paste-tile" data-act="sticker-paste" tabindex="0" title="Paste a copied/lifted image">
+            ${svg(I.clipboard, { w: 14, h: 14, sw: 2, stroke: '#C8901F' })}<span>Paste</span>
+          </div>
         </div>
         <input type="file" accept="image/*" multiple class="sticker-file" data-ch="sticker-file" style="display:none">
       </div>`;
@@ -2667,6 +2671,8 @@ a { color: inherit; }
                 <div class="strip">${stripCells}
                   <div class="add-outfit" data-act="closet-add" data-drop="closet-zone" tabindex="0" title="Paste, drop, or tap to add an outfit">
                     ${svg(I.plus, { w: 16, h: 16, sw: 2.2, stroke: '#C8901F' })}<span>Add</span></div>
+                  <div class="add-outfit paste-tile" data-act="closet-paste" tabindex="0" title="Paste a copied/lifted image">
+                    ${svg(I.clipboard, { w: 15, h: 15, sw: 2, stroke: '#C8901F' })}<span>Paste</span></div>
                   <input type="file" accept="image/*" class="closet-file" data-ch="closet-file" style="display:none">
                 </div>
               </div>
@@ -2825,6 +2831,7 @@ a { color: inherit; }
         case 'add-item': this.addDayItem(trip.stops[this.openStopIdx], this.activeDay); break;
         case 'item-remove': this.removeDayItem(trip.stops[this.openStopIdx], this.activeDay, i); break;
         case 'closet-add': this.modalEl.querySelector('.closet-file').click(); break;
+        case 'closet-paste': this.pasteImageFromClipboard('closet'); break;
         case 'outfit-delete': this.removeOutfitFromCloset(id); break;
         case 'accom-choose': this.chooseAccomOption(this.accomOpenIdx, i); break;
         case 'accom-remove': this.removeAccomOption(this.accomOpenIdx, i); break;
@@ -2832,6 +2839,7 @@ a { color: inherit; }
         case 'toggle-stickers': this.stickerPanelOpen = !this.stickerPanelOpen; this.bumpModal(); break;
         case 'close-stickers': this.stickerPanelOpen = false; this.bumpModal(); break;
         case 'sticker-panel-add': this.modalEl.querySelector('.sticker-file').click(); break;
+        case 'sticker-paste': this.pasteImageFromClipboard('sticker'); break;
         case 'stock-delete': this.removeFromStickerStock(id); break;
         case 'placed-delete': e.stopPropagation(); this.removePlacedSticker(id); break;
       }
@@ -2953,6 +2961,29 @@ a { color: inherit; }
       this._stockStickerDrag = null;
       if (this._dragStopIdx != null) { this._dragStopIdx = null; this.render(); }
       if (this._dragKey != null) { this._dragKey = null; this.render(); }
+    }
+    // Explicit paste via the Async Clipboard API — works on iOS Safari (lift-subject / Paste),
+    // where the DOM `paste` event never reaches the non-editable add tiles.
+    async pasteImageFromClipboard(kind) {
+      if (!(navigator.clipboard && navigator.clipboard.read)) {
+        alert('Paste isn’t supported in this browser — tap “Add” to choose from Photos instead.');
+        return;
+      }
+      try {
+        const items = await navigator.clipboard.read();
+        const files = [];
+        for (const item of items) {
+          const type = item.types.find(t => t.startsWith('image/'));
+          if (!type) continue;
+          const blob = await item.getType(type);
+          files.push(new File([blob], 'pasted.png', { type: blob.type || type }));
+        }
+        if (!files.length) { alert('No image on the clipboard — copy or lift a photo first, then tap Paste.'); return; }
+        if (kind === 'closet') { for (const f of files) await this.addClosetSticker(f); }
+        else { await this.addToStickerStock(files); }
+      } catch (err) {
+        alert('Couldn’t read the clipboard. Lift/copy an image first, then tap Paste and allow clipboard access.');
+      }
     }
     onPaste(e) {
       const closetZone = e.target.closest('[data-drop="closet-zone"]');
