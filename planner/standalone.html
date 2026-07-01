@@ -3,7 +3,7 @@
   GENERATED FILE — do not edit by hand.
   Built from index.html + styles.css + app.js + vendor/leaflet + vendor/topojson by build.js.
   Edit those sources and re-run:  node build.js   (or: node build.js --watch)
-  Built: 2026-07-01T06:04:01.339Z
+  Built: 2026-07-01T06:08:00.791Z
 -->
 
 <html lang="en">
@@ -1762,7 +1762,8 @@ a { color: inherit; }
   transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1) 0.18s;
 }
 .map-stop:not(.mc-dragging):hover .mc-flip,
-.map-stop:not(.mc-dragging):focus-within .mc-flip {
+.map-stop:not(.mc-dragging):focus-within .mc-flip,
+.map-stop.mc-editing .mc-flip {
   transform: rotateY(180deg); transition-delay: 0s;
 }
 .map-stop.mc-dragging .mc-flip { transform: rotateY(180deg); transition: none; }
@@ -2415,8 +2416,17 @@ a { color: inherit; }
       this.mainMapEl.className = 'main-map-leaflet';
       this.mainLeafletMap = null;
       this.mainMapLines = null;
+      this._editingStopIdx = null;
       this.mainCardsOverlayEl = document.createElement('div');
       this.mainCardsOverlayEl.className = 'main-cards-overlay';
+      this.mainCardsOverlayEl.addEventListener('focusout', (e) => {
+        if (this._editingStopIdx == null) return;
+        const editingCard = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${this._editingStopIdx}"]`);
+        if (editingCard && !editingCard.contains(e.relatedTarget)) {
+          editingCard.classList.remove('mc-editing');
+          this._editingStopIdx = null;
+        }
+      });
       this.mainPinsOverlayEl = document.createElement('div');
       this.mainPinsOverlayEl.className = 'main-pins-overlay';
       this.mainCityLabelsEl = document.createElement('div');
@@ -3045,6 +3055,14 @@ a { color: inherit; }
         </div>`;
       });
       this.mainCardsOverlayEl.innerHTML = html;
+      if (this._editingStopIdx != null) {
+        const cardEl = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${this._editingStopIdx}"]`);
+        if (cardEl) {
+          cardEl.classList.add('mc-editing');
+          const ci = cardEl.querySelector('.city');
+          if (ci && !cardEl.contains(document.activeElement)) { ci.focus(); ci.select(); }
+        }
+      }
     }
 
     _positionMainCards() {
@@ -3420,6 +3438,7 @@ a { color: inherit; }
     insertStop(idx) {
       this.currentTrip().stops.splice(idx, 0, { city: '', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } });
       this._newStopIdx = idx;
+      this._editingStopIdx = idx;
       this.bump();
     }
     removeStop(idx) { this.snapshot(); this.currentTrip().stops.splice(idx, 1); if (this.openStopIdx === idx) this.openStopIdx = null; this.bump(); }

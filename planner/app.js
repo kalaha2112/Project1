@@ -481,8 +481,17 @@
       this.mainMapEl.className = 'main-map-leaflet';
       this.mainLeafletMap = null;
       this.mainMapLines = null;
+      this._editingStopIdx = null;
       this.mainCardsOverlayEl = document.createElement('div');
       this.mainCardsOverlayEl.className = 'main-cards-overlay';
+      this.mainCardsOverlayEl.addEventListener('focusout', (e) => {
+        if (this._editingStopIdx == null) return;
+        const editingCard = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${this._editingStopIdx}"]`);
+        if (editingCard && !editingCard.contains(e.relatedTarget)) {
+          editingCard.classList.remove('mc-editing');
+          this._editingStopIdx = null;
+        }
+      });
       this.mainPinsOverlayEl = document.createElement('div');
       this.mainPinsOverlayEl.className = 'main-pins-overlay';
       this.mainCityLabelsEl = document.createElement('div');
@@ -1111,6 +1120,14 @@
         </div>`;
       });
       this.mainCardsOverlayEl.innerHTML = html;
+      if (this._editingStopIdx != null) {
+        const cardEl = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${this._editingStopIdx}"]`);
+        if (cardEl) {
+          cardEl.classList.add('mc-editing');
+          const ci = cardEl.querySelector('.city');
+          if (ci && !cardEl.contains(document.activeElement)) { ci.focus(); ci.select(); }
+        }
+      }
     }
 
     _positionMainCards() {
@@ -1486,6 +1503,7 @@
     insertStop(idx) {
       this.currentTrip().stops.splice(idx, 0, { city: '', nights: 2, note: '', leg: { mode: 'train', duration: '', cost: 0 } });
       this._newStopIdx = idx;
+      this._editingStopIdx = idx;
       this.bump();
     }
     removeStop(idx) { this.snapshot(); this.currentTrip().stops.splice(idx, 1); if (this.openStopIdx === idx) this.openStopIdx = null; this.bump(); }
