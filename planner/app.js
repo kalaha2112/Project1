@@ -1772,24 +1772,23 @@
         mainHolder.appendChild(this.mainCardsOverlayEl);
         this.ensureMainMap(0);
         // Invalidate after layout so Leaflet reads the correct dimensions
+        const _pendingNewStop = this._newStopIdx;
+        this._newStopIdx = null;
         setTimeout(() => {
           if (this.mainLeafletMap) {
             this.mainLeafletMap.invalidateSize();
             this.renderMainMap();
+          }
+          if (_pendingNewStop != null) {
+            const cardEl = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${_pendingNewStop}"]`);
+            const cityInput = cardEl && cardEl.querySelector('.city');
+            if (cityInput) { cityInput.focus(); cityInput.select(); }
           }
         }, 50);
       }
       // re-attach the per-day itinerary map (it lives inside the modal root)
       this.mountDayMap();
       this.paintSaved();
-
-      // focus the city input of a newly inserted stop, then clear the flag
-      if (this._newStopIdx != null) {
-        const inputs = this.root.querySelectorAll('.stop .city');
-        const el = inputs[this._newStopIdx];
-        if (el) { el.focus(); el.select(); }
-        this._newStopIdx = null;
-      }
     }
 
     renderHeader(meta, dateRangeStr) {
