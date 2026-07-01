@@ -484,14 +484,14 @@
       this._editingStopIdx = null;
       this.mainCardsOverlayEl = document.createElement('div');
       this.mainCardsOverlayEl.className = 'main-cards-overlay';
-      this.mainCardsOverlayEl.addEventListener('focusout', (e) => {
+      document.addEventListener('pointerdown', (e) => {
         if (this._editingStopIdx == null) return;
         const editingCard = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${this._editingStopIdx}"]`);
-        if (editingCard && !editingCard.contains(e.relatedTarget)) {
+        if (editingCard && !editingCard.contains(e.target)) {
           editingCard.classList.remove('mc-editing');
           this._editingStopIdx = null;
         }
-      });
+      }, true);
       this.mainPinsOverlayEl = document.createElement('div');
       this.mainPinsOverlayEl.className = 'main-pins-overlay';
       this.mainCityLabelsEl = document.createElement('div');
