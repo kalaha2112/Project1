@@ -72,18 +72,18 @@ a { color: inherit; }
 .page {
   max-width: 1360px;
   margin: 0 auto;
-  padding: 14px 12px 10px;
+  padding: 14px 20px 10px;
   color: var(--ink);
 }
 
 .body-cols {
-  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;
+  display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start;
 }
 
 /* ============================================================
    HEADER
    ============================================================ */
-.header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 
 .trip-title {
   font-family: var(--serif);
@@ -144,7 +144,7 @@ a { color: inherit; }
 /* ============================================================
    TRIP SWITCHER
    ============================================================ */
-.tabs-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+.tabs-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .tabs {
   display: inline-flex; gap: 3px;
   background: var(--line-2); border: 1px solid var(--line);
@@ -195,6 +195,11 @@ a { color: inherit; }
   background: transparent; padding: 3px 0;
 }
 .meta-field.travelers input { width: 50px; }
+.travelers-pip { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.traveler-icon { background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-soft); opacity: 0.85; line-height: 0; }
+.traveler-icon:hover { color: var(--red); opacity: 1; }
+.traveler-add { background: none; border: 1px dashed var(--ink-faint); border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; cursor: pointer; color: var(--ink-faint); padding: 0; }
+.traveler-add:hover { border-color: var(--ink-soft); color: var(--ink-soft); }
 
 /* ============================================================
    ROUTE (left column)
@@ -281,8 +286,10 @@ a { color: inherit; }
 .nights input {
   width: 26px; border: none; background: transparent; font-family: var(--sans);
   font-weight: 700; font-size: 13px; color: var(--ink); text-align: right; padding: 0;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
 }
+.nights input::-webkit-inner-spin-button,
+.nights input::-webkit-outer-spin-button { display: none; }
 .nights span { font-family: var(--sans); font-size: 10px; color: var(--ink-mute); }
 .stop .subdate { font-family: 'Jost', sans-serif; font-style: italic; font-weight: 300; font-size: 14px; color: var(--green); margin: 1px 0 6px; }
 .accom-btn {
@@ -331,7 +338,7 @@ a { color: inherit; }
 /* ============================================================
    ASIDE (right column)
    ============================================================ */
-.aside { flex: 0 1 280px; min-width: 240px; display: flex; flex-direction: column; gap: 12px; }
+.aside { flex: 0 1 280px; min-width: 240px; display: flex; flex-direction: column; gap: 16px; }
 
 .map {
   height: 264px; width: 100%; border-radius: var(--r-card);
@@ -342,16 +349,16 @@ a { color: inherit; }
 .map .leaflet-container { background: var(--map-bg); font-family: var(--sans); }
 .map-note { font-family: var(--sans); font-size: 10px; color: var(--ink-mute); padding: 0 2px; line-height: 1.4; }
 
-.summary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 4px 18px; }
-.stat { padding: 16px 0; border-bottom: 1px solid var(--line-2); }
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 18px; }
+.stat { padding: 13px 0; border-bottom: 1px solid var(--line-2); }
 .stat:last-child { border-bottom: none; }
 .stat.clickable { cursor: pointer; }
-.stat .fig { font-family: var(--caps); font-size: 52px; letter-spacing: .02em; color: var(--ink); line-height: .9; }
+.stat .fig { font-family: var(--caps); font-size: 42px; letter-spacing: .02em; color: var(--ink); line-height: .9; }
 .stat.cash .fig  { color: var(--red); }
 .stat.miles .fig { color: var(--gold); }
 .stat.miles.covered .fig { color: var(--green); }
 .stat.miles.covered .cap::after { content: ' ✓'; color: var(--green); }
-.stat .cap { font-family: var(--sans); font-size: 11px; font-weight: 500; letter-spacing: .06em; color: var(--ink-mid); margin-top: 8px; text-transform: uppercase; }
+.stat .cap { font-family: var(--sans); font-size: 11px; font-weight: 500; letter-spacing: .06em; color: var(--ink-mid); margin-top: 6px; text-transform: uppercase; }
 
 .todos { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 17px 18px; }
 .todos .hd { display: flex; align-items: baseline; gap: 8px; margin-bottom: 13px; }
@@ -467,9 +474,9 @@ a { color: inherit; }
 .item .field { flex: 1; display: flex; align-items: center; gap: 5px; min-width: 120px; }
 .item .field input { font-family: var(--sans); font-size: 12px; color: var(--ink-soft); border: none; background: transparent; padding: 2px 0; flex: 1; min-width: 0; outline-offset: 2px; }
 .item .maps { flex-shrink: 0; display: flex; align-items: center; color: var(--gold); text-decoration: none; font-family: var(--sans); font-size: 11px; font-weight: 700; }
-.item .cost-field { flex: 0 1 92px; display: flex; align-items: center; gap: 4px; }
-.item .cost-field .d { font-family: var(--sans); font-size: 11px; font-weight: 500; color: var(--ink-mute); flex-shrink: 0; }
-.item .cost-field input { font-family: var(--sans); font-size: 12px; color: var(--ink-soft); border: none; background: transparent; padding: 2px 0; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+.item .cost-field { flex: 0 1 72px; display: flex; align-items: center; gap: 3px; }
+.item .cost-field .d { font-family: var(--sans); font-size: 10px; font-weight: 500; color: var(--ink-mute); flex-shrink: 0; }
+.item .cost-field input { font-family: var(--sans); font-size: 10.5px; color: var(--ink-soft); border: none; background: transparent; padding: 2px 0; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
 .item .x { font-family: var(--sans); font-size: 13px; line-height: 1; color: var(--ink-faint); border: none; background: transparent; cursor: pointer; padding: 5px; flex-shrink: 0; }
 .add-item, .add-option {
   font-family: var(--sans); font-size: 18px; font-weight: 800; line-height: 1;
@@ -506,9 +513,9 @@ a { color: inherit; }
 .day-cols { display: flex; gap: 22px; align-items: flex-start; }
 .day-main { flex: 1; min-width: 0; }
 .day-aside { flex: 0 0 260px; position: sticky; top: 4px; display: flex; flex-direction: column; gap: 7px; }
-.daymap { height: 280px; }
-/* CartoDB Positron tiles are already minimal — no extra filter needed */
-.daymap.map .leaflet-tile-pane { filter: none; }
+.daymap { height: 340px; }
+/* Positron tiles: desaturate fully, add warm paper tint, push contrast so roads read */
+.daymap.map .leaflet-tile-pane { filter: saturate(0) sepia(.18) brightness(.88) contrast(1.18); }
 .daymap-cap { font-family: var(--sans); font-size: 10.5px; color: var(--ink-mute); line-height: 1.4; padding: 0 1px; }
 
 /* activity number badge (matches its map pin) */
@@ -557,7 +564,7 @@ a { color: inherit; }
 @media (max-width: 900px) {
   .day-cols { flex-direction: column-reverse; }
   .day-aside { position: static; flex-basis: auto; width: 100%; }
-  .daymap { height: 220px; }
+  .daymap { height: 260px; }
 }
 
 /* closet strip (in itinerary header) */
@@ -1037,7 +1044,7 @@ a { color: inherit; }
 /* flip wrapper — height proportional to width via aspect-ratio */
 .mc-flip {
   position: relative;
-  aspect-ratio: 210 / 118; /* matches CARD_W_SVG / intended card height */
+  aspect-ratio: 210 / 100;
   padding: 0; box-shadow: none;
   transform-style: preserve-3d;
   transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1) 0.18s;
@@ -1060,12 +1067,12 @@ a { color: inherit; }
 
 /* FRONT face — all sizes in cqw */
 .mc-front {
-  padding: 5.3cqw 6.3cqw 4.8cqw;
-  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 4.3cqw 5.8cqw 4.3cqw;
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 2cqw;
   cursor: default;
 }
 .mc-mode-pip {
-  position: absolute; top: 5.3cqw; right: 5.3cqw;
+  position: absolute; top: 4.3cqw; right: 5.8cqw;
   width: 2.9cqw; height: 2.9cqw;
   border-radius: 50%; opacity: 0.85;
 }
@@ -1076,30 +1083,32 @@ a { color: inherit; }
   color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding-right: 8.7cqw;
 }
-.mc-meta { display: flex; flex-direction: column; gap: 1.4cqw; }
+.mc-meta { display: flex; flex-direction: column; gap: 2cqw; }
 .mc-dates-display {
-  font-size: 4.8cqw; /* ~10px */
-  font-family: var(--sans); color: var(--ink-mute); letter-spacing: .01em;
+  font-size: 6cqw;
+  font-family: var(--sans); color: #3a7d44; letter-spacing: .01em;
 }
 .mc-hotel-display {
-  font-size: 4.8cqw;
+  font-size: 7.5cqw;
   font-family: var(--sans); color: var(--ink-soft);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mc-hotel-empty { opacity: 0.28; }
 
-/* BACK face */
+/* BACK face — overflow:hidden while rotated away prevents iOS Safari scroll indicator
+   bleeding through the 3D transform onto the front face */
 .mc-back {
   transform: rotateY(180deg);
-  padding: 5.3cqw 5.3cqw 2.9cqw;
+  padding: 4.3cqw 5.3cqw 2.4cqw;
   display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 0;
-  overflow-y: auto; scrollbar-width: none;
+  overflow-y: hidden;
   pointer-events: none;
 }
-.mc-back::-webkit-scrollbar { display: none; }
 .map-stop:not(.mc-dragging):hover .mc-front { pointer-events: none; }
 .map-stop:not(.mc-dragging):hover .mc-back,
-.map-stop.mc-dragging .mc-back { pointer-events: auto; }
+.map-stop.mc-dragging .mc-back { pointer-events: auto; overflow-y: auto; scrollbar-width: none; }
+.map-stop:not(.mc-dragging):hover .mc-back::-webkit-scrollbar,
+.map-stop.mc-dragging .mc-back::-webkit-scrollbar { display: none; }
 
 /* back: compact overrides — cqw relative to .map-stop width */
 .mc-back .city { font-size: 6.3cqw; letter-spacing: 0; }

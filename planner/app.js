@@ -260,12 +260,12 @@
         label: 'Central Europe',
         depart: '2026-09-14', returnDate: '2026-09-30', travelers: 2,
         originLabel: 'New York (JFK)',
-        outboundLeg: { mode: 'flying-blue', duration: '8h20m nonstop · Delta', cost: 70, miles: 25000 },
+        outboundLeg: { mode: 'flight', duration: '8h20m nonstop · Delta', cost: 70 },
         stops: [
           { city: 'Prague', nights: 4, note: '', leg: { mode: 'train', duration: '~6h direct', cost: 35 } },
           { city: 'Kraków', nights: 4, note: '', leg: { mode: 'overnight-train', duration: '~9h sleeper · saves a hotel night', cost: 80 } },
           { city: 'Budapest', nights: 4, note: '', leg: { mode: 'flying-blue', duration: '~2h15m AF · same ticket as flight home', cost: 0, miles: 0 } },
-          { city: 'Paris', nights: 2, note: '', leg: { mode: 'flying-blue', duration: '9h45m nonstop · Air France', cost: 220, miles: 25000 } }
+          { city: 'Paris', nights: 2, note: '', leg: { mode: 'flying-blue', duration: '9h45m nonstop · Air France', cost: 220, miles: 0 } }
         ],
         homeLabel: 'Vancouver (YVR)'
       },
@@ -273,13 +273,13 @@
         label: 'Scandinavia',
         depart: '2026-09-14', returnDate: '2026-09-30', travelers: 2,
         originLabel: 'New York (JFK)',
-        outboundLeg: { mode: 'flying-blue', duration: '8h nonstop · Delta', cost: 70, miles: 25000 },
+        outboundLeg: { mode: 'flight', duration: '8h nonstop · Delta', cost: 70 },
         stops: [
           { city: 'Copenhagen', nights: 2, note: '', leg: { mode: 'flight', duration: '~1h30m · SAS / Norwegian', cost: 130 } },
           { city: 'Bergen', nights: 3, note: '', leg: { mode: 'train', duration: '~6h45m · Bergen Railway (scenic)', cost: 90 } },
           { city: 'Oslo', nights: 4, note: '', leg: { mode: 'train', duration: '~5-6h', cost: 80 } },
           { city: 'Stockholm', nights: 4, note: '', leg: { mode: 'flying-blue', duration: '~2h40m AF · same ticket as flight home', cost: 0, miles: 0 } },
-          { city: 'Paris', nights: 2, note: '', leg: { mode: 'flying-blue', duration: '9h45m nonstop · Air France', cost: 220, miles: 25000 } }
+          { city: 'Paris', nights: 2, note: '', leg: { mode: 'flying-blue', duration: '9h45m nonstop · Air France', cost: 220, miles: 0 } }
         ],
         homeLabel: 'Vancouver (YVR)'
       }
@@ -402,7 +402,7 @@
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5"/><path d="M12 4v12"/>',
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
     building: '<path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/>',
-    bed: '<rect x="2" y="3" width="20" height="7" rx="2"/><path d="M2 10h20v11H2z"/><path d="M2 14h20"/>',
+    bed: '<path d="M2 20V10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v10"/><path d="M2 20h20"/><rect x="6" y="10" width="5" height="4" rx="1.5"/><rect x="13" y="10" width="5" height="4" rx="1.5"/>',
     pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
@@ -412,7 +412,7 @@
     spark: '<path d="M12 3l1.6 5.1L19 9.7l-4.4 2.9L16 18l-4-3.2L8 18l1.4-5.4L5 9.7l5.4-.6z"/>',
     clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
     sticker: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
-    route: '<rect x="2" y="8" width="16" height="8" rx="1.5"/><path d="M18 8l4 4-4 4"/><path d="M2 12h18"/>'
+    route: '<rect x="3" y="4" width="18" height="14" rx="3"/><path d="M3 10h18"/><rect x="7" y="6" width="4" height="3" rx="1"/><rect x="13" y="6" width="4" height="3" rx="1"/><path d="M7 18l-2 3"/><path d="M17 18l2 3"/>'
   };
   const svg = (paths, opt = {}) => {
     const { w = 16, h = 16, sw = 2, fill = 'none', stroke = 'currentColor' } = opt;
@@ -553,8 +553,18 @@
     migrate() {
       const d = this.data;
       Object.values(d.trips || {}).forEach(trip => {
+        // Reset outbound leg from flying-blue to flight (seed data previously defaulted to flying-blue)
+        if (trip.outboundLeg && trip.outboundLeg.mode === 'flying-blue') {
+          trip.outboundLeg.mode = 'flight';
+          trip.outboundLeg.cost = trip.outboundLeg.cost || 0;
+          delete trip.outboundLeg.miles;
+        }
+        // Zero out the default seed miles (25000) on any flying-blue leg that still carries it unchanged
+        (trip.stops || []).forEach(s => {
+          if (s.leg && s.leg.mode === 'flying-blue' && s.leg.miles === 25000 && !s._milesEdited) s.leg.miles = 0;
+        });
         const legs = [trip.outboundLeg, ...(trip.stops || []).map(s => s.leg)];
-        legs.forEach(l => { if (l && l.mode === 'flying-blue' && l.miles == null) l.miles = (Number(l.cost) > 0 ? (d.meta.milesPerTicket || 25000) : 0); });
+        legs.forEach(l => { if (l && l.mode === 'flying-blue' && l.miles == null) l.miles = 0; });
       });
       if (d.meta && d.meta.title == null) d.meta.title = '';
       if (d.meta && !Array.isArray(d.meta.todos)) d.meta.todos = clone(DEFAULT_STATE.meta.todos);
@@ -1108,7 +1118,7 @@
       const map = this.mainLeafletMap;
       const trip = this.currentTrip();
       const stops = trip.stops;
-      const CARD_W = 155, CARD_H = 87;
+      const CARD_W = 155, CARD_H = 74;
       const mapW = this.mainMapEl.offsetWidth || 800;
       const mapH = this.mainMapEl.offsetHeight || 480;
 
@@ -1174,7 +1184,7 @@
       const map = this.mainLeafletMap;
       const trip = this.currentTrip();
       const stops = trip.stops;
-      const CARD_W = 155, CARD_H = 87;
+      const CARD_W = 155, CARD_H = 74;
       const rect = this.mainMapEl.getBoundingClientRect();
       const svgW = rect.width || 800, svgH = rect.height || 480;
       this.mainLeadersEl.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
@@ -1225,7 +1235,7 @@
       if (this.dayMap) { this.dayMap.invalidateSize(); this.renderDayMap(); return; }
       const L = window.L;
       this.dayMap = L.map(this.dayMapEl, { scrollWheelZoom: false, zoomSnap: .25, zoomDelta: .5, wheelPxPerZoomLevel: 120, inertia: true, attributionControl: false });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, detectRetina: true }).addTo(this.dayMap);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, detectRetina: true }).addTo(this.dayMap);
       this.dayLines = L.layerGroup().addTo(this.dayMap);
       this.dayMarkers = L.layerGroup().addTo(this.dayMap);
       this.dayMap.setView([48, 10], 4);
@@ -1822,7 +1832,13 @@
       return `<div class="meta-row">
         <div class="meta-field"><label>Depart</label><input type="date" value="${escA(trip.depart)}" data-ch="depart"></div>
         <div class="meta-field"><label>Return</label><input type="date" value="${escA(trip.returnDate)}" data-ch="return"></div>
-        <div class="meta-field travelers"><label>Travelers</label><input type="text" inputmode="numeric" value="${escA(travelers)}" data-ch="travelers"></div>
+        <div class="meta-field">
+          <label>Travelers</label>
+          <div class="travelers-pip">
+            ${Array.from({ length: travelers }, () => `<button class="traveler-icon" data-act="traveler-dec" title="Remove traveler"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg></button>`).join('')}
+            <button class="traveler-add" data-act="traveler-inc" title="Add traveler">+</button>
+          </div>
+        </div>
       </div>`;
     }
 
@@ -1987,7 +2003,7 @@
         <div class="stat"><div class="fig">${nights}</div><div class="cap">nights on the ground</div></div>
         ${SHOW_COSTS ? `<div class="stat cash clickable" data-act="open-budget" title="See budget breakdown">
           <div class="fig">${esc(money(grand))}</div><div class="cap">total budget · ${esc(money(perPerson))} / person</div></div>
-        <div class="stat miles${covered ? ' covered' : ''}"><div class="fig">${miles.toLocaleString()}</div><div class="cap">flying blue miles needed</div></div>` : ''}
+        <div class="stat miles${covered ? ' covered' : ''}"><div class="fig">${miles.toLocaleString()}</div><div class="cap">reward points needed</div></div>` : ''}
       </div>`;
     }
 
@@ -2386,6 +2402,10 @@
           while (el && el !== r) { if (el.getAttribute && el.getAttribute('draggable') === 'true') { el.setAttribute('draggable', 'false'); el.dataset.dragRestore = '1'; } el = el.parentElement; }
         }
       });
+      const fmtNumBlur = e => { const t = e.target; if (t.tagName !== 'INPUT' || t.getAttribute('inputmode') !== 'numeric') return; const n = Number((t.value || '').replace(/,/g, '')); if (!isNaN(n) && isFinite(n) && n >= 1000) t.value = n.toLocaleString(); };
+      const fmtNumFocus = e => { const t = e.target; if (t.tagName !== 'INPUT' || t.getAttribute('inputmode') !== 'numeric') return; t.value = (t.value || '').replace(/,/g, ''); };
+      r.addEventListener('focusin', fmtNumFocus); r.addEventListener('focusout', fmtNumBlur);
+      m.addEventListener('focusin', fmtNumFocus); m.addEventListener('focusout', fmtNumBlur);
       r.addEventListener('focusout', () => { r.querySelectorAll('[data-drag-restore="1"]').forEach(el => { el.setAttribute('draggable', 'true'); delete el.dataset.dragRestore; }); });
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') this.onEscape();
@@ -2414,6 +2434,8 @@
         case 'add-trip': this.addTrip(); break;
         case 'tab-select': if (this.data.active !== key) { this.data.active = key; this._lastCoordKey = ''; this.bump(); } break;
         case 'tab-remove': this.removeTrip(key); break;
+        case 'traveler-inc': trip.travelers = Math.min(12, (Math.max(1, Number(trip.travelers) || 1)) + 1); this.bump(); break;
+        case 'traveler-dec': trip.travelers = Math.max(1, (Math.max(1, Number(trip.travelers) || 1)) - 1); this.bump(); break;
         case 'add-stop': this.insertStop(trip.stops.length); break;
         case 'insert-stop': this.insertStop(i); break;
         case 'stop-iti': this.openStop(i); break;
@@ -2486,7 +2508,7 @@
         case 'home-label': trip.homeLabel = v; this.bump(); break;
         case 'leg-mode': { const leg = this.legByIndex(Number(t.dataset.leg)); leg.mode = v; if (leg.mode === 'flying-blue' && leg.miles == null) leg.miles = 25000; this.bump(); break; }
         case 'leg-dur': this.legByIndex(Number(t.dataset.leg)).duration = v; this.bump(); break;
-        case 'leg-cost': { const leg = this.legByIndex(Number(t.dataset.leg)); const num = Number(v) || 0; if (leg.mode === 'flying-blue') leg.miles = num; else leg.cost = num; this.bump(); break; }
+        case 'leg-cost': { const leg = this.legByIndex(Number(t.dataset.leg)); const num = Number((v+'').replace(/,/g,'')) || 0; if (leg.mode === 'flying-blue') leg.miles = num; else leg.cost = num; this.bump(); break; }
         case 'transport-cost': { const leg = this.legByIndex(Number(t.dataset.leg)); const num = Number(v.replace(/,/g, '')) || 0; if (leg.mode === 'flying-blue') leg.miles = num; else leg.cost = num; this.scheduleSave(); break; }
         case 'transport-depart': { this.legByIndex(Number(t.dataset.leg)).departure = v; this.scheduleSave(); break; }
         case 'transport-arrival': { this.legByIndex(Number(t.dataset.leg)).arrival = v; this.scheduleSave(); break; }
@@ -2514,7 +2536,7 @@
         case 'accom-distance': trip.stops[this.accomOpenIdx].accom.options[i].distance = v; this.bump(); break;
         case 'accom-features': trip.stops[this.accomOpenIdx].accom.options[i].features = v; this.bump(); break;
         // budget modal
-        case 'budget-edit': meta.budget[t.dataset.key] = Math.max(0, Number(v) || 0); this.bump(); break;
+        case 'budget-edit': meta.budget[t.dataset.key] = Math.max(0, Number((v+'').replace(/,/g,'')) || 0); this.bump(); break;
         case 'budget-override': { const digits = (v || '').replace(/[^0-9.]/g, ''); meta.budget.cityPassOverride = (digits === '') ? null : Math.max(0, Number(digits) || 0); this.bump(); break; }
       }
     }
@@ -2734,7 +2756,7 @@
       if (d.stopEl) d.stopEl.classList.remove('mc-dragging');
       if (d._lastLeft == null) return;
       if (this.mainLeafletMap && window.L) {
-        const CARD_W = 155, CARD_H = 87;
+        const CARD_W = 155, CARD_H = 74;
         const pt = window.L.point(d._lastLeft + CARD_W / 2, d._lastTop + CARD_H / 2);
         const latlng = this.mainLeafletMap.containerPointToLatLng(pt);
         this.currentTrip().stops[d.stopIdx].cardLatLng = [latlng.lat, latlng.lng];
