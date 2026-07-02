@@ -76,9 +76,10 @@
   const CLOUD_PUSH_DEBOUNCE_MS = 900;                 // coalesce rapid edits into one upload
 
   // Public web build (the single-file standalone.html served by rawgithack from
-  // the main repo). The Sync modal links here, carrying "?sync=<code>" so the
-  // hosted page auto-connects to this device's endpoint — two-way sync.
-  const HOSTED_WEB_URL = 'https://raw.githack.com/kalaha2112/Project1/523a1b9/planner/standalone.html';
+  // the main branch of the Planner repo — always the latest merged build). The
+  // Sync modal links here, carrying "?sync=<code>" so the hosted page
+  // auto-connects to this device's endpoint — two-way sync.
+  const HOSTED_WEB_URL = 'https://raw.githack.com/kalaha2112/Planner/main/planner/standalone.html';
 
   const _notFound = () => { const e = new Error('No data found for that code.'); e.code = 404; return e; };
   const _httpErr  = (name, status) => new Error('“' + name + '” error (HTTP ' + status + ').');

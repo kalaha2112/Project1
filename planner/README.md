@@ -65,15 +65,18 @@ shell caches are cleaned up on activation).
 
 ## The hosted web version
 
-The single-file `standalone.html` is published via **rawgithack** from the main repo:
+The single-file `standalone.html` is published via **rawgithack** from the `main` branch of
+this repo (kalaha2112/Planner, previously Project1):
 
-<https://raw.githack.com/kalaha2112/Project1/523a1b9/planner/standalone.html>
+<https://raw.githack.com/kalaha2112/Planner/main/planner/standalone.html>
 
 The Sync modal is wired to this URL (`HOSTED_WEB_URL` in `app.js`): tap **Open the web
 version** and it opens the hosted planner with `?sync=<code>` appended, so the hosted page
 auto-connects to this device's endpoint and edits flow both ways. If the device isn't linked
 yet, the one-tap button first creates a sync endpoint, then opens the hosted page already
-linked. To point at a newer deploy, update `HOSTED_WEB_URL` (bump the commit hash in the path).
+linked. Because the URL tracks `main`, every merge to `main` updates the hosted copy — no
+URL bumping needed. (For heavy traffic, rawgithack recommends the permanent
+`rawcdn.githack.com/<user>/<repo>/<commit>/…` form; that one is pinned per commit.)
 
 ## Keeping the app and the hosted standalone.html in sync (both ways)
 
