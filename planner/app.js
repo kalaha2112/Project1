@@ -1598,6 +1598,16 @@
         const i = fromArr.findIndex(e => e.id === drag.id); if (i >= 0) fromArr.splice(i, 1);
         const toArr = this.dayOutfits(this.currentTrip().stops[targetStopIdx], targetDayIdx);
         if (!toArr.some(e => e.id === drag.id)) toArr.push({ id: drag.id, image: drag.image });
+      } else if (drag.kind === 'activity') {
+        if (drag.stopIdx === targetStopIdx && drag.dayIdx === targetDayIdx) { this._plannerDrag = null; return; }
+        const stop = this.currentTrip().stops[targetStopIdx];
+        this.ensureItinerary(stop);
+        const fromDay = stop.itinerary[drag.dayIdx];
+        const toDay = stop.itinerary[targetDayIdx];
+        if (!fromDay || !fromDay.items[drag.itemIdx]) { this._plannerDrag = null; return; }
+        const [moved] = fromDay.items.splice(drag.itemIdx, 1);
+        toDay.items.push(moved);
+        this._selectedItem = null; this._flashItem = null;
       }
       this._plannerDrag = null; this.bump();
     }
@@ -2144,7 +2154,13 @@
           const hasAddr = /\S/.test(geoQuery);
           return `<div class="item${ii === selIdx ? ' selected' : ''}${ii === flashIdx ? ' flash' : ''}" data-idx="${ii}">
           <span class="item-num${placed ? ' placed' : (hasAddr ? '' : ' empty')}" title="${placed ? 'Mapped' : hasAddr ? 'Locating…' : 'Type a place name to map this'}">${ii + 1}</span>
-          <input class="time" value="${escA(it.time)}" data-ch="item-time" data-i="${ii}" placeholder="9:00">
+          <span class="item-grip" draggable="true" data-drag="activity" data-i="${ii}" title="Drag to move to another day">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+              <circle cx="2.4" cy="2.4" r="1.3"/><circle cx="7.6" cy="2.4" r="1.3"/>
+              <circle cx="2.4" cy="8" r="1.3"/><circle cx="7.6" cy="8" r="1.3"/>
+              <circle cx="2.4" cy="13.6" r="1.3"/><circle cx="7.6" cy="13.6" r="1.3"/>
+            </svg>
+          </span>
           <div class="mid">
             <input class="text" value="${escA(it.text)}" data-ch="item-text" data-i="${ii}" placeholder="">
             <div class="meta">
@@ -2543,7 +2559,6 @@
         case 'sync-code-in': this._syncCodeDraft = v; break;
         // itinerary modal
         case 'iti-city': trip.stops[this.openStopIdx].city = v; this.bump(); break;
-        case 'item-time': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].time = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-text': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].text = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-address': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].address = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-note': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].note = v; this.bumpModal(); this.scheduleSave(); break;
@@ -2571,6 +2586,25 @@
       else if (kind === 'closet') {
         const o = this.ensureCloset().find(o => o.id === t.dataset.id);
         this._plannerDrag = { kind: 'closet', id: t.dataset.id, image: o ? o.image : '' };
+      }
+      else if (kind === 'activity') {
+        const dayIdx = this.activeDay; const itemIdx = Number(t.dataset.i);
+        const stop = this.currentTrip().stops[this.openStopIdx];
+        const it = stop.itinerary[dayIdx] && stop.itinerary[dayIdx].items[itemIdx];
+        this._plannerDrag = { kind: 'activity', stopIdx: this.openStopIdx, dayIdx, itemIdx };
+        const label = (it && it.text && it.text.trim()) || 'Activity';
+        const di = document.createElement('div');
+        di.textContent = label;
+        Object.assign(di.style, {
+          position: 'fixed', top: '-200px', left: '-200px', maxWidth: '220px',
+          padding: '7px 12px', borderRadius: '8px', background: '#23140C', color: '#fff',
+          fontFamily: 'Sora, system-ui, sans-serif', fontSize: '12px', fontWeight: '600',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          boxShadow: '0 4px 14px rgba(35,20,12,.3)',
+        });
+        document.body.appendChild(di);
+        e.dataTransfer.setDragImage(di, 14, 14);
+        requestAnimationFrame(() => di.remove());
       }
       else if (kind === 'cell') {
         const dayIdx = Number(t.dataset.i); const stop = this.currentTrip().stops[this.openStopIdx];

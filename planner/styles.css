@@ -466,8 +466,19 @@ a { color: inherit; }
 .day-prompt { padding: 26px 30px 32px; text-align: center; }
 .day-prompt p, .empty-note { font-family: var(--sans); font-size: 13px; color: var(--ink-mute); }
 
-.item { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--line-2); }
-.item .time { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--ink-soft); border: none; background: transparent; padding: 4px 0; width: 62px; flex-shrink: 0; outline-offset: 2px; font-variant-numeric: tabular-nums; }
+/* padding + compensating negative margin: unselected rows still align flush
+   with .add-item and other day-main content, but .item.selected/.flash's
+   own rounded box gets breathing room instead of content touching its edge */
+.item { display: flex; gap: 12px; align-items: flex-start; padding: 11px 12px; margin: 0 -12px; border-bottom: 1px solid var(--line-2); }
+.item-grip {
+  flex-shrink: 0; width: 20px; height: 22px; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-faint); cursor: grab; touch-action: none; opacity: .75;
+  border-radius: var(--r-xs); transition: background .15s, color .15s, opacity .15s;
+}
+.item-grip:hover { opacity: 1; color: var(--ink-soft); background: var(--line-2); }
+.item-grip:active { cursor: grabbing; }
+.item-grip svg { display: block; }
 .item .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .item .text { font-family: var(--sans); font-size: 14px; color: var(--ink); border: none; background: transparent; padding: 4px 0; width: 100%; outline-offset: 2px; }
 .item .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
