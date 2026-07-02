@@ -515,6 +515,7 @@
       this.loadState();
       this.render();
       this.ensureMap(0);
+      this.initTouchPointer();
       this.startSyncLoop();
       // auto-link from URL: any copy opened as …?sync=<code or endpoint URL>
       // (or #sync=…) connects itself to that endpoint — this is how the
@@ -527,6 +528,37 @@
       } else if (this.isLinked()) {
         this.pullCloud();   // pick up edits made on another device
       }
+    }
+    /* Touch pointer indicator: iOS/iPadOS have no cursor, so show the same
+       dashed arrow at the fingertip while touching (fades out on release) so
+       you can see where you're touching. Passive + pointer-events:none — it
+       never blocks taps, scrolling, or the pointer-based drags. */
+    initTouchPointer() {
+      if (this._touchArrow) return;
+      const el = document.createElement('div');
+      el.className = 'touch-arrow';
+      el.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(el);
+      this._touchArrow = el;
+      const SIZE = 34, TIPX = SIZE * 21 / 32, TIPY = SIZE * 20 / 32, LIFT = 8;
+      let raf = 0, x = 0, y = 0, hideT = 0;
+      const place = () => { raf = 0; el.style.transform = `translate3d(${x - LIFT - TIPX}px, ${y - LIFT - TIPY}px, 0)`; };
+      const show = (e) => {
+        if (e.pointerType !== 'touch') return;     // real cursor handles mouse/pen
+        x = e.clientX; y = e.clientY;
+        clearTimeout(hideT);
+        el.classList.add('on');
+        if (!raf) raf = requestAnimationFrame(place);
+      };
+      const hide = (e) => {
+        if (e && e.pointerType && e.pointerType !== 'touch') return;
+        clearTimeout(hideT);
+        hideT = setTimeout(() => el.classList.remove('on'), 240);   // brief linger after lift
+      };
+      document.addEventListener('pointerdown', show, { passive: true });
+      document.addEventListener('pointermove', show, { passive: true });
+      document.addEventListener('pointerup', hide, { passive: true });
+      document.addEventListener('pointercancel', hide, { passive: true });
     }
     currentTrip() { return this.data.trips[this.data.active]; }
     legByIndex(i) { const t = this.currentTrip(); return i === 0 ? t.outboundLeg : t.stops[i - 1].leg; }
