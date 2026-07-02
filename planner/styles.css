@@ -1289,3 +1289,24 @@ html { -webkit-tap-highlight-color: transparent; }
   }
   .sticker-panel { top: max(88px, calc(env(safe-area-inset-top) + 72px)); }
 }
+
+/* ============================================================
+   CUSTOM CURSOR — hand-drawn dashed arrow (fine pointers only)
+   PNG data-URI so it inlines into the single-file build and works
+   in Safari (SVG cursors are unreliable there). Touch / coarse
+   devices (the phone app) keep native no-cursor behaviour.
+   Appended last so its cursor rules win over earlier grab/pointer
+   declarations by source order. Hotspot = arrowhead tip (21,20).
+   ============================================================ */
+:root { --cur-arrow: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABdElEQVR4nOyWv0uFUBTHj/pExaEl8Ac9Xkm0BQX9Ay1tbf0DzdHW1NjQn9C/EDTWEC0NTUVbEW+KlhB8lNDTRDK1r4MQb/Led8HlfuCAHrjn+/Xc49UB9cyAekYakAZ6N6ARI77vLxqGsZBlWUoCUImRuq4fdF0/J0EwGXAcx1YUJUC8kiCYZiCKom+YWC/L8pMEwbwFYBkdcEgQzG+BpmlnqqpOcLlFAuDpwC1is5kHEgCPgaOqqjaaeWgTnucdI2546jEvCMPwA+LPELzHmXCJlI4YYi52cL9PjPB0oKV5E3YhulcUxQnOhwxxipzJUoT5JGwxTfMKAzlN0/TCsqw1iP9iOLdt2/5B7q5rHYUEgO14g4ERtiFuvGFGAmzTpMta7g78Q0c3puhGgOsvmBiiE1aSJNddFnN/DV3XPYDQIZ58FaKzDzLqWofbAMRXIL4E8UfcjtH2F+Se8jwfx3H83rWOkBmYB/lHJA1IA9JA7wb+AAAA//9MzyZTAAAABklEQVQDANz7a+07w93XAAAAAElFTkSuQmCC) 21 20, auto; }
+@media (pointer: fine) {
+  html, body,
+  a, button, select, summary, label,
+  [data-act], [data-drag], [data-map-drag], [data-grip-stop],
+  .cal-cell, .stop, .map-stop, .grip, .item-grip,
+  .todo .box, .outfit, .stock-item, .placed-sticker,
+  .opt .choose, .leaflet-container { cursor: var(--cur-arrow); }
+  /* text entry keeps an I-beam so the caret stays findable */
+  input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=range]),
+  textarea, [contenteditable="true"] { cursor: text; }
+}
