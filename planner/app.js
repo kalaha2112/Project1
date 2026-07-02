@@ -1097,6 +1097,14 @@
         .join('');
     }
 
+    // mirrors the CSS clamp(100px, 15.4cqw, 155px) on .main-cards-overlay .map-stop
+    // (styles.css) so every JS position/leader-line computation matches the card's
+    // actual responsive size — the one place that ratio lives on the JS side.
+    _mainCardSize() {
+      const mapW = this.mainMapEl.offsetWidth || 800;
+      const w = Math.max(100, Math.min(155, mapW * 0.154));
+      return { w, h: w * (74 / 155) };
+    }
     renderMainMap() {
       if (!this.mainLeafletMap || !window.L) return;
       const L = window.L;
@@ -1206,15 +1214,20 @@
       const map = this.mainLeafletMap;
       const trip = this.currentTrip();
       const stops = trip.stops;
-      const CARD_W = 155, CARD_H = 74;
       const mapW = this.mainMapEl.offsetWidth || 800;
       const mapH = this.mainMapEl.offsetHeight || 480;
+      const { w: CARD_W, h: CARD_H } = this._mainCardSize();
 
+      // ---- pass 1: each stop's desired position, before de-overlap ----
+      // `auto` marks cards placed by the default pin-offset heuristic — only those
+      // get nudged apart from each other; a card the user explicitly dragged
+      // (stop.cardLatLng) or that's mid-edit with no city yet keeps its exact spot.
+      const placed = [];
       stops.forEach((stop, idx) => {
         const cardEl = this.mainCardsOverlayEl.querySelector(`.map-stop[data-i="${idx}"]`);
         if (!cardEl) return;
 
-        let px, py;
+        let px, py, auto = false;
         if (stop.cardLatLng) {
           const pt = map.latLngToContainerPoint(stop.cardLatLng);
           px = pt.x - CARD_W / 2;
@@ -1234,12 +1247,49 @@
             const right = idx % 2 === 0;
             px = right ? pt.x + 18 : pt.x - CARD_W - 18;
             py = pt.y - CARD_H - 8;
+            auto = true;
           }
         }
-        // clamp so cards stay within the visible map area
+        cardEl.style.display = '';
+        placed.push({ cardEl, px, py, auto });
+      });
+
+      // ---- pass 2: nudge apart any auto-placed cards that collide ----
+      // pins that are geographically close converge in pixel space as the map
+      // shrinks, so same-size cards can still land on top of each other; a few
+      // rounds of iterative AABB separation is enough for the handful of stops
+      // a trip typically has. Leader lines (_updateMainLeaders) keep each
+      // nudged card visually tied back to its own pin.
+      const GAP = 6;
+      for (let iter = 0; iter < 4; iter++) {
+        let moved = false;
+        for (let i = 0; i < placed.length; i++) {
+          if (!placed[i].auto) continue;
+          for (let j = i + 1; j < placed.length; j++) {
+            if (!placed[j].auto) continue;
+            const a = placed[i], b = placed[j];
+            const overlapX = Math.min(a.px + CARD_W, b.px + CARD_W) - Math.max(a.px, b.px);
+            const overlapY = Math.min(a.py + CARD_H, b.py + CARD_H) - Math.max(a.py, b.py);
+            if (overlapX <= 0 || overlapY <= 0) continue;
+            moved = true;
+            if (overlapX < overlapY) {
+              const push = (overlapX + GAP) / 2;
+              if (a.px + CARD_W / 2 <= b.px + CARD_W / 2) { a.px -= push; b.px += push; }
+              else { a.px += push; b.px -= push; }
+            } else {
+              const push = (overlapY + GAP) / 2;
+              if (a.py + CARD_H / 2 <= b.py + CARD_H / 2) { a.py -= push; b.py += push; }
+              else { a.py += push; b.py -= push; }
+            }
+          }
+        }
+        if (!moved) break;
+      }
+
+      // ---- pass 3: clamp to the visible map area and commit to the DOM ----
+      placed.forEach(({ cardEl, px, py }) => {
         px = Math.max(4, Math.min(mapW - CARD_W - 4, px));
         py = Math.max(4, Math.min(mapH - CARD_H - 4, py));
-        cardEl.style.display = '';
         cardEl.style.left = px + 'px';
         cardEl.style.top = py + 'px';
       });
@@ -1281,7 +1331,7 @@
       const map = this.mainLeafletMap;
       const trip = this.currentTrip();
       const stops = trip.stops;
-      const CARD_W = 155, CARD_H = 74;
+      const { w: CARD_W, h: CARD_H } = this._mainCardSize();
       const rect = this.mainMapEl.getBoundingClientRect();
       const svgW = rect.width || 800, svgH = rect.height || 480;
       this.mainLeadersEl.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
@@ -1666,6 +1716,16 @@
         const i = fromArr.findIndex(e => e.id === drag.id); if (i >= 0) fromArr.splice(i, 1);
         const toArr = this.dayOutfits(this.currentTrip().stops[targetStopIdx], targetDayIdx);
         if (!toArr.some(e => e.id === drag.id)) toArr.push({ id: drag.id, image: drag.image });
+      } else if (drag.kind === 'activity') {
+        if (drag.stopIdx === targetStopIdx && drag.dayIdx === targetDayIdx) { this._plannerDrag = null; return; }
+        const stop = this.currentTrip().stops[targetStopIdx];
+        this.ensureItinerary(stop);
+        const fromDay = stop.itinerary[drag.dayIdx];
+        const toDay = stop.itinerary[targetDayIdx];
+        if (!fromDay || !fromDay.items[drag.itemIdx]) { this._plannerDrag = null; return; }
+        const [moved] = fromDay.items.splice(drag.itemIdx, 1);
+        toDay.items.push(moved);
+        this._selectedItem = null; this._flashItem = null;
       }
       this._plannerDrag = null; this.bump();
     }
@@ -2212,7 +2272,13 @@
           const hasAddr = /\S/.test(geoQuery);
           return `<div class="item${ii === selIdx ? ' selected' : ''}${ii === flashIdx ? ' flash' : ''}" data-idx="${ii}">
           <span class="item-num${placed ? ' placed' : (hasAddr ? '' : ' empty')}" title="${placed ? 'Mapped' : hasAddr ? 'Locating…' : 'Type a place name to map this'}">${ii + 1}</span>
-          <input class="time" value="${escA(it.time)}" data-ch="item-time" data-i="${ii}" placeholder="9:00">
+          <span class="item-grip" draggable="true" data-drag="activity" data-i="${ii}" title="Drag to move to another day">
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+              <circle cx="2.4" cy="2.4" r="1.3"/><circle cx="7.6" cy="2.4" r="1.3"/>
+              <circle cx="2.4" cy="8" r="1.3"/><circle cx="7.6" cy="8" r="1.3"/>
+              <circle cx="2.4" cy="13.6" r="1.3"/><circle cx="7.6" cy="13.6" r="1.3"/>
+            </svg>
+          </span>
           <div class="mid">
             <input class="text" value="${escA(it.text)}" data-ch="item-text" data-i="${ii}" placeholder="">
             <div class="meta">
@@ -2618,7 +2684,6 @@
         case 'sync-code-in': this._syncCodeDraft = v; break;
         // itinerary modal
         case 'iti-city': trip.stops[this.openStopIdx].city = v; this.bump(); break;
-        case 'item-time': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].time = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-text': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].text = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-address': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].address = v; this.bumpModal(); this.scheduleSave(); break;
         case 'item-note': trip.stops[this.openStopIdx].itinerary[this.activeDay].items[i].note = v; this.bumpModal(); this.scheduleSave(); break;
@@ -2646,6 +2711,25 @@
       else if (kind === 'closet') {
         const o = this.ensureCloset().find(o => o.id === t.dataset.id);
         this._plannerDrag = { kind: 'closet', id: t.dataset.id, image: o ? o.image : '' };
+      }
+      else if (kind === 'activity') {
+        const dayIdx = this.activeDay; const itemIdx = Number(t.dataset.i);
+        const stop = this.currentTrip().stops[this.openStopIdx];
+        const it = stop.itinerary[dayIdx] && stop.itinerary[dayIdx].items[itemIdx];
+        this._plannerDrag = { kind: 'activity', stopIdx: this.openStopIdx, dayIdx, itemIdx };
+        const label = (it && it.text && it.text.trim()) || 'Activity';
+        const di = document.createElement('div');
+        di.textContent = label;
+        Object.assign(di.style, {
+          position: 'fixed', top: '-200px', left: '-200px', maxWidth: '220px',
+          padding: '7px 12px', borderRadius: '8px', background: '#23140C', color: '#fff',
+          fontFamily: 'Sora, system-ui, sans-serif', fontSize: '12px', fontWeight: '600',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          boxShadow: '0 4px 14px rgba(35,20,12,.3)',
+        });
+        document.body.appendChild(di);
+        e.dataTransfer.setDragImage(di, 14, 14);
+        requestAnimationFrame(() => di.remove());
       }
       else if (kind === 'cell') {
         const dayIdx = Number(t.dataset.i); const stop = this.currentTrip().stops[this.openStopIdx];
