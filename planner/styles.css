@@ -839,6 +839,12 @@ a { color: inherit; }
 .sync-btn:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 .sync-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .sync-actions .sync-btn { flex: 1; text-align: center; }
+.open-web-btn {
+  display: block; width: 100%; text-align: center; text-decoration: none;
+  margin-top: 4px; background: var(--gold-soft); border-color: var(--gold-border); color: var(--gold);
+}
+.open-web-btn:hover { background: var(--gold-hover); }
+a.open-web-btn { padding: 10px 16px; box-sizing: border-box; }
 .sync-or { display: flex; align-items: center; gap: 10px; color: var(--ink-mute); font-family: var(--caps); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
 .sync-or::before, .sync-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 18px; }

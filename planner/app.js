@@ -75,6 +75,11 @@
   const SYNC_POLL_MS  = 20000;                        // how often to pull while the tab is visible
   const CLOUD_PUSH_DEBOUNCE_MS = 900;                 // coalesce rapid edits into one upload
 
+  // Public web build (the single-file standalone.html served by rawgithack from
+  // the main repo). The Sync modal links here, carrying "?sync=<code>" so the
+  // hosted page auto-connects to this device's endpoint — two-way sync.
+  const HOSTED_WEB_URL = 'https://raw.githack.com/kalaha2112/Project1/523a1b9/planner/standalone.html';
+
   const _notFound = () => { const e = new Error('No data found for that code.'); e.code = 404; return e; };
   const _httpErr  = (name, status) => new Error('“' + name + '” error (HTTP ' + status + ').');
 
@@ -717,6 +722,25 @@
       this.persistSyncRec(); this.setSyncStatus('off', ''); this.bumpModal();
     }
     syncNow() { this.pullCloud({ force: true }); }
+
+    // URL of the hosted web build, carrying this device's sync code when linked
+    // so the opened page auto-connects to the same trips.
+    hostedWebUrl() {
+      return this.isLinked()
+        ? HOSTED_WEB_URL + '?sync=' + encodeURIComponent(this.sync.id)
+        : HOSTED_WEB_URL;
+    }
+    // Open the hosted web build. If this device isn't linked yet, first create a
+    // sync endpoint automatically, then hand the new tab the ?sync= link so both
+    // ends stay in sync. The blank tab is opened up-front (inside the user
+    // gesture) so it isn't caught by the popup blocker after the async create.
+    async openHostedWeb() {
+      if (this.isLinked()) { window.open(this.hostedWebUrl(), '_blank', 'noopener'); return; }
+      const win = window.open('about:blank', '_blank');
+      await this.createSync();
+      if (this.isLinked()) { if (win) win.location = this.hostedWebUrl(); else window.open(this.hostedWebUrl(), '_blank', 'noopener'); }
+      else if (win) win.close();   // couldn't create an endpoint; status shows the error
+    }
 
     // reconstruct a human endpoint URL from a "t-<key>" code (for display)
     endpointUrl(code) {
@@ -2407,6 +2431,8 @@
           <button class="sync-btn primary" data-act="sync-now"${this._syncBusy ? ' disabled' : ''}>Sync now</button>
           <button class="sync-btn ghost" data-act="sync-unlink">Disconnect this device</button>
         </div>
+        <a class="sync-btn open-web-btn" href="${escA(this.hostedWebUrl())}" target="_blank" rel="noopener">Open the web version ↗</a>
+        <p class="sync-note">Opens the hosted planner already linked to this device — edits flow both ways.</p>
         <p class="sync-note">Trips live at this public endpoint. Anyone with the link can read or change them — treat it like a shared password. Offline edits upload automatically when you reconnect.</p>
         <p class="sync-note">Auto-link another copy: open it with <code>?sync=${escA(this.sync.id)}</code> appended to its address (works for the installed app and the hosted standalone page alike). Copies served from the <b>same host</b> share edits live without any setup.</p>
       ` : `
@@ -2422,6 +2448,9 @@
         </div>
         <div class="sync-row"><span class="sync-status ${statusCls}">${esc(this.syncStatusLabel())}</span></div>
         <p class="sync-note">Your trips are stored at this public endpoint so both devices can reach them. Anyone with the link can view or edit it, so keep it private.</p>
+        <div class="sync-or">or</div>
+        <button class="sync-btn open-web-btn" data-act="open-web"${this._syncBusy ? ' disabled' : ''}>Open the web version, synced ↗</button>
+        <p class="sync-note">One tap: creates a sync endpoint automatically and opens the hosted planner already linked to this device — edits then flow both ways.</p>
       `;
       return `<div class="overlay" data-act="overlay-sync">
         <div class="dialog sync-dialog" data-stop>
@@ -2520,6 +2549,7 @@
         case 'sync-connect': { const inp = this.modalEl.querySelector('.sync-code-in'); this.connectEndpoint(inp ? inp.value : this._syncCodeDraft); break; }
         case 'sync-link': { const inp = this.modalEl.querySelector('.sync-code-in'); this.linkSync(inp ? inp.value : this._syncCodeDraft); break; }
         case 'sync-now': this.syncNow(); break;
+        case 'open-web': this.openHostedWeb(); break;
         case 'sync-unlink': if (confirm('Unlink this device? Your trips stay here but stop syncing with other devices.')) this.unlinkSync(); break;
         case 'sync-select': if (t.select) t.select(); break;
         case 'sync-copy': {
